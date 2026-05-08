@@ -46,6 +46,16 @@ class KanvasPreferences(bpy.types.AddonPreferences):
     key_scale: bpy.props.StringProperty(name="Scale Key", default="S") #type: ignore
     key_rotate: bpy.props.StringProperty(name="Rotate Key", default="R") #type: ignore
     key_delete: bpy.props.StringProperty(name="Delete Key", default="X") #type: ignore
+    
+    key_shear_mod: bpy.props.EnumProperty(
+        name="Shear Modifier",
+        items=[
+            ('ALT', 'Alt', 'Use Alt key'),
+            ('SHIFT', 'Shift', 'Use Shift key'),
+            ('CTRL', 'Ctrl', 'Use Ctrl key'),
+        ],
+        default='ALT'
+    )
 
     auto_copy: bpy.props.BoolProperty( #type: ignore
         name="Auto-Copy to Assets",
@@ -56,27 +66,46 @@ class KanvasPreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         
-        box = layout.box()
-        box.label(text="File System", icon='FILE_FOLDER')
+        # Main split for two columns
+        main_row = layout.row()
+        col_left = main_row.column()
+        col_right = main_row.column()
+
+        # --- LEFT COLUMN: SYSTEM & CONTROLS ---
+        # File System Group
+        box = col_left.box()
+        box.label(text="Storage & Workflow", icon='FILE_FOLDER')
         box.prop(self, "assets_folder")
         box.prop(self, "auto_copy")
 
-        box = layout.box()
-        box.label(text="Visual Style", icon='RESTRICT_SELECT_OFF')
-        
-        split = box.split(factor=0.5)
-        col = split.column()
-        col.prop(self, "color_x_axis")
-        col.prop(self, "color_y_axis")
-        
-        col = split.column()
-        col.prop(self, "color_selection")
-        col.prop(self, "selection_thickness")
+        col_left.separator()
 
-        box = layout.box()
-        box.label(text="Hotkeys (Interactive Mode)", icon='IMAGE')
-        grid = box.grid_flow(columns=4, align=True)
-        grid.prop(self, "key_move", text="Move")
-        grid.prop(self, "key_scale", text="Scale")
-        grid.prop(self, "key_rotate", text="Rotate")
-        grid.prop(self, "key_delete", text="Delete")
+        # Hotkeys Group
+        box = col_left.box()
+        box.label(text="Interactive Controls", icon='MOUSE_MOVE')
+        
+        flow = box.grid_flow(columns=2, align=True)
+        flow.prop(self, "key_move", text="Move")
+        flow.prop(self, "key_scale", text="Scale")
+        flow.prop(self, "key_rotate", text="Rotate")
+        flow.prop(self, "key_delete", text="Delete")
+        
+        box.separator()
+        box.prop(self, "key_shear_mod", text="Shear Mod (Hold)")
+
+        # --- RIGHT COLUMN: VISUAL STYLE ---
+        box = col_right.box()
+        box.label(text="Aesthetics & Visuals", icon='RESTRICT_SELECT_OFF')
+        
+        col = box.column(align=True)
+        col.prop(self, "color_x_axis", text="X Axis Color")
+        col.prop(self, "color_y_axis", text="Y Axis Color")
+        col.separator()
+        col.prop(self, "color_selection", text="Selection")
+        col.prop(self, "selection_thickness", text="Thickness")
+        
+        # Add a placeholder for future visual settings
+        col_right.separator()
+        box = col_right.box()
+        box.label(text="UI Info", icon='INFO')
+        box.label(text="Kanvas Engine: Active", icon='CHECKMARK')
