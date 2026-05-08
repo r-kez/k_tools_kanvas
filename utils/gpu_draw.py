@@ -102,9 +102,9 @@ def get_kanvas_shader():
                     except:
                         pass
                 
-                info.uniform_add('VEC4', "color")
-                info.uniform_add('MAT4', "ModelViewProjectionMatrix")
-                info.uniform_add('INT', "use_correction")
+                info.uniform_float("color", 'VEC4')
+                info.uniform_float("ModelViewProjectionMatrix", 'MAT4')
+                info.uniform_int("use_correction", 'INT')
                 
                 _kanvas_shader = gpu.shader.create_from_info(info)
             else:
@@ -166,7 +166,7 @@ class KanvasTexture:
         shader.bind()
         
         # Mandatory: Send current Viewport Matrix to the custom shader
-        shader.uniform_mat4("ModelViewProjectionMatrix", matrix)
+        shader.uniform_matrix("ModelViewProjectionMatrix", matrix)
         
         shader.uniform_sampler("image", self.texture)
         
