@@ -39,7 +39,7 @@ vertex_shader = """
 fragment_shader = """
     uniform sampler2D image;
     uniform vec4 color;
-    uniform bool use_correction;
+    uniform int use_correction;
     in vec2 uv;
     out vec4 fragColor;
     
@@ -55,7 +55,7 @@ fragment_shader = """
         vec4 tex_color = texture(image, uv);
         
         vec3 rgb = tex_color.rgb;
-        if (use_correction) {
+        if (use_correction != 0) {
             rgb = srgb_to_linear(rgb);
         }
         
@@ -102,9 +102,9 @@ def get_kanvas_shader():
                     except:
                         pass
                 
-                info.uniform_float("color", 'VEC4')
+                info.push_constant('VEC4', "color")
                 info.uniform_mat4("ModelViewProjectionMatrix", 'MAT4')
-                info.uniform_bool("use_correction", 'BOOL')
+                info.push_constant('INT', "use_correction")
                 
                 _kanvas_shader = gpu.shader.create_from_info(info)
             else:
