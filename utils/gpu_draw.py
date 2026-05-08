@@ -102,9 +102,9 @@ def get_kanvas_shader():
                     except:
                         pass
                 
-                info.push_constant('VEC4', "color")
-                info.uniform_mat4("ModelViewProjectionMatrix", 'MAT4')
-                info.push_constant('INT', "use_correction")
+                info.uniform_add('VEC4', "color")
+                info.uniform_add('MAT4', "ModelViewProjectionMatrix")
+                info.uniform_add('INT', "use_correction")
                 
                 _kanvas_shader = gpu.shader.create_from_info(info)
             else:
@@ -149,6 +149,11 @@ class KanvasTexture:
         rotated_pts = [rotate_point(p, location, rotation) for p in pts]
 
         shader = get_kanvas_shader()
+        
+        # --- MVP MATRIX INJECTION ---
+        # Capture current Node Editor view transformation (Zoom/Pan)
+        matrix = gpu.matrix.get_projection_matrix() @ gpu.matrix.get_model_view_matrix()
+        
         batch = batch_for_shader(
             shader, 'TRI_FAN',
             {
@@ -159,16 +164,16 @@ class KanvasTexture:
 
         gpu.state.blend_set('ALPHA')
         shader.bind()
+        
+        # Mandatory: Send current Viewport Matrix to the custom shader
+        shader.uniform_mat4("ModelViewProjectionMatrix", matrix)
+        
         shader.uniform_sampler("image", self.texture)
         
-        # Multiply by color tint and opacity
+        # Send dynamic properties
         final_color = (color_tint[0], color_tint[1], color_tint[2], opacity)
-        try:
-            shader.uniform_float("color", final_color)
-            shader.uniform_int("use_correction", int(use_correction)) # Bool as int for safer transfer
-        except:
-            # Fallback for shaders that don't support the 'color' uniform
-            pass
+        shader.uniform_float("color", final_color)
+        shader.uniform_int("use_correction", int(use_correction))
 
         batch.draw(shader)
         gpu.state.blend_set('NONE')
