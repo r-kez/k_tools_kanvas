@@ -26,6 +26,21 @@ The eyedropper button next to **Edit Colors** adds one color region for each **d
 
 The regions start empty. Paint them like any other region, or use them as a palette to pick from. The image file is never changed.
 
+## Exporting regions as masks
+
+The export button next to the eyedropper saves your painted regions as images you can use in Blender, for example as textures, selections, or an ID map for compositing.
+
+Choose a folder, then:
+
+| Option | What it does |
+| --- | --- |
+| **Resolution** | **Image Size** (the size of the image on the board, up to 4096 pixels) or **Mask Size** (the reduced size the paint is stored at, up to 512 pixels, faster and smaller) |
+| **ID Map** | Also saves one image showing every region in its own color |
+
+Each region that has paint becomes a black and white PNG named after the image and the region, for example `Photo_Roof.png`. White is where the region is painted and **Inverse** is applied. Two regions with the same name get a number added. Regions without paint are skipped, and hidden regions are still exported.
+
+The ID map, `Photo_ids.png`, draws the regions in list order, so a later region covers an earlier one where they overlap. Areas with no paint stay transparent. The masks store exact values, so they are safe to use as non-color data.
+
 ## Painting
 
 1. Pick a region in the list.

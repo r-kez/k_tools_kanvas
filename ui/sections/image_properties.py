@@ -218,6 +218,7 @@ def draw_color_properties(layout, img):
     row.operator_context = 'INVOKE_REGION_WIN'
     row.operator("kanvas.edit_color_markup", text="Edit Colors", icon='BRUSH_DATA')
     row.operator("kanvas.extract_palette", text="", icon='EYEDROPPER')
+    row.operator("kanvas.export_markup_masks", text="", icon='EXPORT')
     if img.markup_editing:
         markup.label(text="COLOR MODE · Tab: switch tools")
         markup.label(text="< / >: change · Shift+C: add · Shift+E: edit")

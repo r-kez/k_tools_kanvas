@@ -370,6 +370,59 @@ class KANVAS_OT_ExtractPalette(KanvasTreeOnly, bpy.types.Operator):
         return {'FINISHED'}
 
 
+class KANVAS_OT_ExportMarkupMasks(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.export_markup_masks'
+    bl_label = 'Export Color Masks'
+    bl_description = ('Save each painted color region of this image as a black and white mask, '
+                      'plus an optional ID map, to use as textures or selections in Blender')
+    bl_options = {'INTERNAL'}
+
+    directory: bpy.props.StringProperty(subtype='DIR_PATH')  # type: ignore
+    resolution: bpy.props.EnumProperty(  # type: ignore
+        name='Resolution',
+        description='Pixel size of the exported masks',
+        items=[
+            ('SOURCE', 'Image Size', 'The size of the image on the board (up to 4096 pixels)'),
+            ('MASK', 'Mask Size', 'The reduced size the paint is stored at (up to 512 pixels), faster and smaller'),
+        ],
+        default='SOURCE',
+    )
+    id_map: bpy.props.BoolProperty(  # type: ignore
+        name='ID Map',
+        description='Also save one image showing every region in its own color',
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        item = _active_image(context) if KanvasTreeOnly.poll(context) else None
+        return (item is not None and not item.markup_editing
+                and any(region.dabs or region.polygons for region in item.markup_regions))
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def draw(self, context):
+        self.layout.prop(self, 'resolution')
+        self.layout.prop(self, 'id_map')
+
+    def execute(self, context):
+        from ..utils.markup_export import export_markup_masks
+        directory = bpy.path.abspath(self.directory)
+        if not directory:
+            self.report({'ERROR'}, 'Choose a folder')
+            return {'CANCELLED'}
+        try:
+            paths = export_markup_masks(_active_image(context), directory,
+                                        self.resolution, self.id_map)
+        except (OSError, RuntimeError) as exc:
+            self.report({'ERROR'}, f'Could not export the masks: {exc}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'Saved {len(paths)} image(s) in {directory}')
+        return {'FINISHED'}
+
+
 class KANVAS_OT_RandomizeMarkupColors(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.randomize_markup_colors'
     bl_label = 'Randomize Colors'
