@@ -1,58 +1,47 @@
-# Kanvas 🎨
+# Kanvas
 
-Kanvas is a professional, high-performance reference image engine for the Blender Node Editor. It allows users to overlay, manipulate, and organize reference images directly within the node graph without blocking standard workflow.
+**Kanvas is a reference board inside Blender.** It turns the Node Editor into an infinite canvas where you collect images, write notes, group ideas, and mark up references, all saved in your `.blend` file.
 
-## 🚀 Key Features
+Requires **Blender 4.2 or newer**. The core add-on needs no extra software.
 
-- **Passive Interaction Mode**: A background modal system that allows you to move images and nodes simultaneously.
-- **12-Point Transformation Gizmos**: Advanced handles for Uniform Scale, Stretch, Rotation, and Shearing.
-- **Post-Pixel Visuals**: Gizmos and outlines maintain a constant screen-space size regardless of viewport zoom level.
-- **GPU Accelerated**: Blazing fast rendering using the Blender GPU API.
-- **Automatic Depth Management**: Clicking an image automatically brings it to the foregroun
+## What you can do
 
-## 🖱️ Interaction & Shortcuts
+- **Collect references.** Drag in images, paste them, or import a PureRef board. Keep optimized copies next to your project, or pack everything into the `.blend`.
+- **Organize.** Move, rotate, scale, stretch, and shear images. Align, distribute, and pack them. Group items in nested frames that resize to fit.
+- **Take notes.** Add text cards with Markdown, and checklists with progress. Connect items with arrows.
+- **Mark up images.** Hide parts of an image with masks. Paint named color regions to plan work, link them to checklist tasks, mark tasks as done, and isolate one color at a time.
+- **Select a subject with one click.** The optional Auto Select tool uses a small segmentation model that runs locally. It is downloaded only when you choose to.
+- **Stay in control.** Switch between **Edit** and **Move** modes so you can browse a board without changing it. Lock frames, hide items, and edit every shortcut.
+- **Stay fast.** Boards with hundreds of images stay responsive, and Blender's auto save keeps working.
 
-To start interacting, toggle **INTERACTIVE MODE** in the Kanvas panel (Node Editor N-Panel).
+## Quick start
 
-### Selection
-- **Left Click**: Select an image and bring it to front.
-- **Click Empty Space**: Standard Blender node navigation (pass-through).
+1. Install the add-on from **Edit > Preferences > Add-ons > Install from Disk**, and enable **K-Tools: Kanvas**.
+2. Change an editor to **Kanvas Tree** and click **New**.
+3. Save your `.blend` file, then drag images onto the canvas.
+4. Press `N` and open the **K-Tools** tab for the controls.
 
-### Transformation Shortcuts (Active Image)
-- `G`: Grab/Move image.
-- `S`: Scale (Uniform).
-- `R`: Rotate.
-- `Alt + G`: Reset Location to (0,0).
-- `Alt + S`: Reset Scale & Shear to defaults.
-- `Alt + R`: Reset Rotation to 0.
-- `Shift + D`: Duplicate active image.
-- `X` or `Delete`: Remove active image.
-- `ESC` or `Right Click`: Cancel current transformation.
-- `Enter` or `Left Click`: Confirm transformation.
+## Documentation
 
-### Advanced Gizmo Controls
-| Handle Type | Action | Description |
-| :--- | :--- | :--- |
-| **White Corners** | **Uniform Scale** | Scales the image while preserving aspect ratio. |
-| **Pink Midpoints** | **Stretch** | Non-uniform scale (horizontal or vertical). |
-| **Green Outer Handles** | **Rotate** | Rotate the image with a dedicated offset handle. |
-| **Shift + Pink Mids** | **Shear** | Hold Shift while dragging midpoints to tilt/shear the image. |
+The full documentation is in the [`docs`](docs/index.md) folder:
 
-## ⚙️ Configuration
+- [Getting started](docs/getting-started.md)
+- [Interface and navigation](docs/interface.md)
+- [Images](docs/images.md), [Selecting and transforming](docs/transforms.md), [Arranging items](docs/arranging.md)
+- [Frames](docs/frames.md), [Text cards and checklists](docs/text-cards.md), [Arrows](docs/arrows.md)
+- [Image masks](docs/masks.md), [Color Markup](docs/color-markup.md), [Auto Select](docs/auto-select.md)
+- [Preferences](docs/preferences.md), [Keyboard and mouse reference](docs/shortcuts.md)
+- [Performance and memory](docs/performance.md), [Troubleshooting](docs/troubleshooting.md)
 
-Located in the Node Editor **N-Panel > Kanvas**:
+## Status
 
-- **Interactive Mode**: Toggle the background interaction engine.
-- **Show Gizmos**: Globally show/hide transformation handles.
-- **Scale/Rotate Toggles**: Individually enable/disable specific handle types.
-- **Gizmo Size**: Adjust the pixel-size of the handles.
-- **Opacity & Tint**: Control the visual appearance of each reference image.
+Kanvas is under active development. The [TODO](TODO.md) lists work in progress, and not every planned item is available yet.
 
-## 📂 Technical Details
+## Credits and license
 
-- **Icon Path**: `assets/icons/` (standardized PNGs).
-- **Shader**: Custom GPU shader with Scene Linear to sRGB conversion for color accuracy.
-- **State Management**: Persistent data stored per scene in `bpy.context.scene.kanvas_settings`.
+Developed by Robert Kezives. Licensed **GPL-3.0-or-later**.
 
----
-*Developed by Robert Kezives*
+Third-party material used by optional features:
+
+- Some interface icons are rasterized from [Tabler Icons](https://github.com/tabler/tabler-icons) (MIT). See `assets/icons/tabler/`.
+- Auto Select uses [MobileSAM](https://github.com/ChaoningZhang/MobileSAM) and Meta's [Segment Anything](https://github.com/facebookresearch/segment-anything) decoder, in ONNX form (Apache-2.0), and [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT). None of them is bundled. They are downloaded only if you choose to.

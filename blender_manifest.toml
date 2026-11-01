@@ -2,9 +2,9 @@ schema_version = "1.0.0"
 
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
-id = "k_toolskanvas"
-version = "1.0.0"
-name = "K-Tools: Kanvas"
+id = "k_tools_kanvas"
+version = "1.0.3" 
+name = "K-Tools: Kanvas (WIP)"
 tagline = "This is another extension"
 maintainer = "Robert Kezives"
 # Supported types: "add-on", "theme"
