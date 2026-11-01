@@ -325,6 +325,51 @@ class KANVAS_OT_IsolateMarkupRegion(KanvasTreeOnly, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def extract_palette_regions(item, count):
+    """Add one color region per dominant color of the image; returns the regions."""
+    from ..utils.palette_extract import dominant_colors, hex_name
+    from ..utils.sam_engine import prepare_image   # display-space pixels, reduced
+    pixels, _size = prepare_image(item.image_data)
+    regions = []
+    for color, _share in dominant_colors(pixels / 255.0, count):
+        region = _add_region(item)
+        # Colors are drawn as stored (display space), so this matches the image.
+        region.color = color
+        region.name = hex_name(color)
+        regions.append(region)
+    return regions
+
+
+class KANVAS_OT_ExtractPalette(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.extract_palette'
+    bl_label = 'Extract Colors'
+    bl_description = 'Add one color region for each dominant color of this image'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    count: bpy.props.IntProperty(  # type: ignore
+        name='Colors', description='How many dominant colors to extract',
+        default=6, min=2, max=12,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        item = _active_image(context) if KanvasTreeOnly.poll(context) else None
+        return item is not None and not item.mask_editing and not item.markup_editing
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        try:
+            regions = extract_palette_regions(_active_image(context), self.count)
+        except Exception as exc:
+            self.report({'ERROR'}, f'Could not read the image colors: {exc}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'Added {len(regions)} colors from the image')
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class KANVAS_OT_RandomizeMarkupColors(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.randomize_markup_colors'
     bl_label = 'Randomize Colors'

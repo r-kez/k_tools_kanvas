@@ -20,6 +20,12 @@ Select an image and open the **Markup** subpanel under **Selection**. The checkb
 | **Brush Size** and **Erase** | Settings for the painting tools |
 | **Edit Colors** | Start painting |
 
+## Colors from the image
+
+The eyedropper button next to **Edit Colors** adds one color region for each **dominant color** of the image. Choose how many (2 to 12), and Kanvas creates a region for each, named with its hex code (for example `#D92626`), biggest areas first. Colors that are almost the same are merged, so a flat image may give fewer than you asked for.
+
+The regions start empty. Paint them like any other region, or use them as a palette to pick from. The image file is never changed.
+
 ## Painting
 
 1. Pick a region in the list.
