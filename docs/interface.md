@@ -71,6 +71,8 @@ The item list shows every item on the board. In the list you can:
 
 When an item's image file is missing on disk, the list shows how many are missing and a **Relink** button (see [Images](images.md#missing-files-and-relinking)).
 
+The **checkmark** button beside the list runs **Check Board**. It looks for broken references: image links to a checklist that was deleted, color regions that follow a task that no longer exists, arrow ends attached to a deleted item, items that belong to a missing frame, and items that share an identity. It lists what it found, and **Repair** clears only those broken references. It never deletes items, images, paint, or text. An item with no image needs **Replace Image** and is only reported.
+
 Arrows are listed and edited below the item list (see [Arrows](arrows.md)). The settings of the selected image, card, or frame are in the **Selection** panel.
 
 ## Right-click menu

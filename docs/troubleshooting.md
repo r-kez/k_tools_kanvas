@@ -93,6 +93,11 @@ See the tips in [Performance and memory](performance.md).
 **Blender did not auto save while I was working.**
 Blender postpones auto save while a modal operation is active, for example in the middle of a drag, a transform, or a Mask or Color editing session. Finish the operation, and it saves normally. Kanvas does not keep any operation running in the background.
 
+## Broken references
+
+**A link, an arrow end, or a frame stopped working after I deleted something.**
+Click the **checkmark** (**Check Board**) beside the item list. It lists the broken references and **Repair** clears them without deleting any content. See [Interface and navigation](interface.md#the-items-panel).
+
 ## Still stuck?
 
 - Turn on **Show Debug Panel** in the preferences. **Clear GPU Cache** and **Reload Custom Shader** rebuild what Kanvas draws, which fixes most display glitches.

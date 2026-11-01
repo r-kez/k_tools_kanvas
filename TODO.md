@@ -80,7 +80,7 @@ Nada abaixo está implementado. Cada item precisa de um plano curto antes de mex
 
 ### Refinamentos e robustez
 
-- [ ] **P2 — Relatório de integridade do quadro:** listar problemas do arquivo (imagens ausentes, referências de Compare/Checklist quebradas, regiões sem tarefa, IDs duplicados) em um painel único, com correções de um clique, e uma migração versionada entre versões do addon. Complementa o **Relink** que já existe.
+- [x] **P2 — Relatório de integridade do quadro (parte 1):** o botão de verificação ao lado da lista de itens (**Check Board**) procura e lista referências quebradas: links de imagem para um checklist apagado, regiões de cor que seguem uma tarefa inexistente, pontas de seta presas a um item apagado, itens num frame que não existe e identidades repetidas ou vazias. **Repair** só limpa a referência quebrada e nunca apaga itens, imagens, tinta ou texto; uma ponta de seta solta fica onde estava. Imagens ausentes são apenas listadas (precisam de **Replace Image**). `utils/board_check.py`, `operators/ops_check.py` e `scratch/test_board_check.py`; conferir o diálogo numa janela gráfica. **Pendente:** migração versionada entre versões do addon e mais verificações (regiões duplicadas, setas em checklists sem tarefa).
 - [ ] **P3 — Desempenho em quadros enormes:** agrupar texturas pequenas num atlas e/ou reduzir o custo por imagem no desenho (hoje cada imagem é uma chamada de desenho separada); medir antes e depois num quadro com mais de mil itens. Só vale se a medição mostrar ganho real depois do cache de texturas e do corte de itens fora da vista.
 - [ ] **P3 — Atualizar os painéis e a documentação com capturas de tela:** ao concluir a reorganização dos painéis, gerar as capturas para o site (itens em “Revisão atual”).
 

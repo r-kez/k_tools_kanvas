@@ -22,6 +22,7 @@ def draw_item_list(layout, settings):
     col = row.column(align=True)
     col.operator_context = 'INVOKE_DEFAULT'
     col.operator("kanvas.remove_image", icon='REMOVE', text="").index = settings.active_image_index
+    col.operator("kanvas.check_board", icon='CHECKMARK', text="")
 
     from ...operators.ops_image import missing_external_items
     missing_count = len(missing_external_items(settings))
