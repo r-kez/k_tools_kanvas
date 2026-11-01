@@ -40,7 +40,7 @@ try:
         assert bpy.ops.kanvas.edit_color_markup.poll()
         tool_items = image.bl_rna.properties['mask_tool'].enum_items
         assert {entry.identifier for entry in tool_items} == {
-            'BRUSH', 'POLYGON', 'RECTANGLE'}
+            'BRUSH', 'POLYGON', 'RECTANGLE', 'AUTO'}
         km = bpy.context.window_manager.keyconfigs.addon.keymaps['Node Editor']
         mask_bindings = [item for item in km.keymap_items
                          if item.idname == 'kanvas.interact'

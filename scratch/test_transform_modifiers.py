@@ -90,7 +90,7 @@ try:
         try:
             keymap.rebuild()
             bindings = {(item.properties.action, item.type, item.shift, item.alt)
-                        for _, item in keymap._items}
+                        for _, item in keymap._items if item.idname == 'kanvas.interact'}
             for action, key in (('MOVE', 'G'), ('ROTATE', 'R'), ('SCALE', 'S')):
                 assert (action, key, False, False) in bindings, (action, key)
             for action, key in (('RESET_MOVE', 'G'), ('RESET_ROTATE', 'R'),
