@@ -136,6 +136,8 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             layout.label(text="Edit", icon='GREASEPENCIL')
             if content:
                 layout.operator("kanvas.duplicate_image", icon='DUPLICATE', text="Duplicate")
+            layout.operator("kanvas.copy_style", icon='COPYDOWN', text="Copy Style")
+            layout.operator("kanvas.paste_style", icon='PASTEDOWN', text="Paste Style")
             layout.operator("kanvas.remove_image", icon='TRASH', text=f"Delete ({n_sel})")
             layout.separator()
             layout.menu("KANVAS_MT_add_content", text="Add", icon='ADD')

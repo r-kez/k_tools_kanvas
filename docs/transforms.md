@@ -70,6 +70,18 @@ After pressing one, move the mouse. **Click or press `Enter`** to confirm. **Pre
 
 The right-click menu also has **Reset Transform**. Resets apply to the selected, unlocked items.
 
+## Copying a style
+
+**Copy Style** and **Paste Style** in the right-click menu copy the *look* of one item to others of the same kind, without touching position, size, or content:
+
+| Kind | What is copied |
+| --- | --- |
+| Image | Opacity, color tint, brightness, contrast, saturation, color correction, and the value check (grayscale and posterize) |
+| Text card or checklist | Text color, background color, opacity, and font size |
+| Frame | Color, opacity, and header font size |
+
+Select the item whose look you want, choose **Copy Style**, then select one or more items of the same kind and choose **Paste Style**. Locked items are skipped, and items of a different kind are left alone. Pasting is one Undo step.
+
 ## Duplicating, renaming, deleting
 
 | Action | Shortcut |

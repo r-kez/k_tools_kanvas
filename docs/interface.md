@@ -80,7 +80,7 @@ Right-click an item to open the **Kanvas** menu. Its entries depend on the selec
 - **Frame:** create a frame around the selection, attach it to a frame, release it from a frame, or fit a frame to its content.
 - **Arrange:** Pack, align, and distribute.
 - **Reset Transform:** location, scale, or rotation.
-- **Edit:** duplicate or delete.
+- **Edit:** duplicate, **Copy Style**, **Paste Style**, or delete.
 - **Add:** the same entries as the **Add** menu.
 
 ## Hover cursor and feedback
