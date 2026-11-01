@@ -401,6 +401,22 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         name='Checklist', description='Show each line as a task with a checkbox',
         default=False, update=update_text_appearance,
     )
+    text_compare: bpy.props.BoolProperty(  # type: ignore
+        name='Comparison',
+        description='This card compares two images (A and B) instead of showing text',
+        default=False, update=update_text_appearance,
+    )
+    compare_a_id: bpy.props.StringProperty(  # type: ignore
+        name='Image A', description='Item shown as A in this comparison card', default='',
+    )
+    compare_b_id: bpy.props.StringProperty(  # type: ignore
+        name='Image B', description='Item shown as B in this comparison card', default='',
+    )
+    compare_split: bpy.props.FloatProperty(  # type: ignore
+        name='Divider',
+        description='Where the divider sits: A is shown to its left and B to its right',
+        default=0.5, min=0.0, max=1.0, subtype='FACTOR', update=update_text_appearance,
+    )
     text_show_progress: bpy.props.BoolProperty(  # type: ignore
         name='Show Progress', description='Show completed checklist percentage on the card',
         default=True, update=update_text_appearance,

@@ -256,6 +256,48 @@ class KanvasTexture:
             print(f"Kanvas: Draw error: {e}")
             self._quad_batch = None
 
+    def draw_rect(self, rect, uv_rect=(0.0, 0.0, 1.0, 1.0), opacity=1.0, color_tint=(1.0, 1.0, 1.0),
+                  brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
+                  flip_h=False, flip_v=False):
+        """Draw part of the image into an axis-aligned rectangle (region pixels in POST_PIXEL)."""
+        if not self.texture:
+            return
+        shader = get_kanvas_shader()
+        if not shader:
+            return
+        left, bottom, right, top = rect
+        u0, v0, u1, v1 = uv_rect
+        if flip_h:
+            u0, u1 = 1.0 - u0, 1.0 - u1
+        if flip_v:
+            v0, v1 = 1.0 - v0, 1.0 - v1
+        batch = batch_for_shader(shader, 'TRI_FAN', {
+            'pos': [(left, bottom), (right, bottom), (right, top), (left, top)],
+            'texCoord': [(u0, v0), (u1, v0), (u1, v1), (u0, v1)],
+        })
+        previous = gpu.state.blend_get()
+        try:
+            gpu.state.blend_set('ALPHA')
+            shader.bind()
+            shader.uniform_sampler('image', self.texture)
+            shader.uniform_sampler('mask_image', self.texture)
+            shader.uniform_sampler('markup_image', self.texture)
+            shader.uniform_float('color', (color_tint[0], color_tint[1], color_tint[2], opacity))
+            shader.uniform_float('brightness', brightness)
+            shader.uniform_float('contrast', contrast)
+            shader.uniform_float('saturation', saturation)
+            shader.uniform_float('use_color_correction', float(use_color_correction))
+            shader.uniform_float('mask_enabled', 0.0)
+            shader.uniform_float('markup_enabled', 0.0)
+            if shader_supports_value_view():
+                shader.uniform_float('value_mode', 0.0)
+                shader.uniform_float('value_levels', 0.0)
+            batch.draw(shader)
+        except Exception as exc:
+            print(f'Kanvas: Draw error: {exc}')
+        finally:
+            gpu.state.blend_set(previous)
+
     def draw_outline(self, location, scale, shear, rotation, color=None, thickness=None):
         if not self.texture: return
         prefs = get_prefs()

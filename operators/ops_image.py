@@ -865,6 +865,10 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
                         copied_vertex.uv = tuple(vertex.uv)
         if source.item_type == 'TEXT':
             new_img.text_checklist = source.text_checklist
+            new_img.text_compare = source.text_compare
+            new_img.compare_a_id = source.compare_a_id
+            new_img.compare_b_id = source.compare_b_id
+            new_img.compare_split = source.compare_split
             new_img.text_show_progress = source.text_show_progress
             new_img.text_markdown = source.text_markdown
             new_img.text_scroll = source.text_scroll

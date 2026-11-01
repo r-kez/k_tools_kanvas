@@ -20,11 +20,12 @@ class KANVAS_OT_CreateText(KanvasTreeOnly, bpy.types.Operator):
     """Add a text card or checklist at the cursor or view center."""
     bl_idname = 'kanvas.create_text'
     bl_label = 'Add Text Card'
-    bl_description = 'Add a text card or checklist at the cursor or view center'
+    bl_description = 'Add a text card, checklist or image comparison at the cursor or view center'
     bl_options = {'REGISTER', 'UNDO'}
 
     location: bpy.props.FloatVectorProperty(size=2, options={'SKIP_SAVE'})  # type: ignore
     checklist: bpy.props.BoolProperty(default=False)  # type: ignore
+    compare: bpy.props.BoolProperty(default=False)  # type: ignore
 
     def invoke(self, context, event):
         region = context.region
@@ -42,18 +43,21 @@ class KANVAS_OT_CreateText(KanvasTreeOnly, bpy.types.Operator):
         settings = get_settings(context)
         for item in settings.images:
             item.is_selected = False
-        card_name = unique_item_name(settings, 'Checklist' if self.checklist else 'Text Note')
+        card_name = unique_item_name(settings, 'Compare' if self.compare else 'Checklist' if self.checklist else 'Text Note')
         card = settings.images.add()
         card.item_id = uuid.uuid4().hex
         card.item_type = 'TEXT'
         card.name = card_name
         card.text_show_header = True
         card.location = self.location
-        card.text_checklist = self.checklist
+        card.text_checklist = self.checklist and not self.compare
+        if self.compare:
+            card.text_compare = True
+            card.text_width, card.text_height = 480.0, 320.0
         line = card.text_lines.add()
         line.line_id = uuid.uuid4().hex
-        line.value = 'New task' if self.checklist else 'Write here...'
-        if self.checklist:
+        line.value = '' if self.compare else 'New task' if self.checklist else 'Write here...'
+        if self.checklist and not self.compare:
             from .ops_checklist import _TASK_COLORS
             line.color = _TASK_COLORS[0]
         card.z_index = max((item.z_index for item in settings.images), default=0) + 1
@@ -281,3 +285,68 @@ class KANVAS_OT_SortChecklist(KanvasTreeOnly, bpy.types.Operator):
         sync_card_images(settings, card)
         context.area.tag_redraw()
         return {'FINISHED'}
+
+
+class KANVAS_OT_PickCompareSide(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.pick_compare_side'
+    bl_label = 'Pick Comparison Image'
+    bl_description = ('Click an image on the board to show it as A or B in this comparison card. '
+                      'Shift+click clears the side. Esc cancels')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    item_id: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+    side: bpy.props.EnumProperty(  # type: ignore
+        items=[('A', 'A', ''), ('B', 'B', '')], options={'SKIP_SAVE'},
+    )
+
+    def invoke(self, context, event):
+        self._area = context.area
+        self._window = context.window
+        self._region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
+        if self._region is None:
+            return {'CANCELLED'}
+        self._window.cursor_modal_set('EYEDROPPER')
+        context.workspace.status_text_set(
+            f'Click the image to show as {self.side}  |  Shift+click: clear  |  Esc: cancel')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        try:
+            self._window.cursor_modal_restore()
+            context.workspace.status_text_set(None)
+        except (ReferenceError, RuntimeError):
+            pass
+
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context)
+            return {'CANCELLED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            region = self._region
+            x, y = event.mouse_x - region.x, event.mouse_y - region.y
+            if not (0 <= x < region.width and 0 <= y < region.height):
+                return {'RUNNING_MODAL'}
+            settings = get_settings(context)
+            card = next((item for item in settings.images
+                         if item.item_id == self.item_id and item.text_compare), None)
+            if card is None:
+                self._end(context)
+                return {'CANCELLED'}
+            from .ops_markup import image_under_point
+            image, _uv = image_under_point(settings, region.view2d.region_to_view(x, y))
+            if image is None and not event.shift:
+                self.report({'WARNING'}, 'Click on an image')
+                return {'RUNNING_MODAL'}
+            self._end(context)
+            target = '' if event.shift else image.item_id
+            if self.side == 'A':
+                card.compare_a_id = target
+            else:
+                card.compare_b_id = target
+            self.report({'INFO'}, f'{self.side}: {image.name if target else "cleared"}')
+            self._area.tag_redraw()
+            return {'FINISHED'}
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE'}:
+            return {'RUNNING_MODAL'}
+        return {'RUNNING_MODAL', 'PASS_THROUGH'}

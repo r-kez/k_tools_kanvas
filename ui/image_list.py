@@ -48,6 +48,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         is_frame = (getattr(item, "item_type", 'IMAGE') == 'FRAME')
         is_text = (getattr(item, "item_type", 'IMAGE') == 'TEXT')
+        is_compare = is_text and item.text_compare
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             from ..utils.gpu import get_frame, frame_ancestors, frame_descendants
             parent = get_frame(data, item.parent_frame) if item.parent_frame else None
@@ -83,6 +84,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
             kind = main.row(align=True)
             kind.ui_units_x = 1.0
             kind.label(text="", icon='FULLSCREEN_ENTER' if is_frame else
+                       'UV_SYNC_SELECT' if is_compare else
                        'TEXT' if is_text else 'IMAGE_DATA')
 
             name = main.row(align=True)

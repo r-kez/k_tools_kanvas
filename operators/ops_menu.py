@@ -39,6 +39,7 @@ def draw_kanvas_add_entries(layout):
     layout.operator("kanvas.import_pureref", icon='IMPORT', text="PureRef Scene (.pur)")
     layout.operator("kanvas.create_text", icon='TEXT', text="Text Card").checklist = False
     layout.operator("kanvas.create_text", icon='CHECKBOX_HLT', text="Checklist").checklist = True
+    layout.operator("kanvas.create_text", icon='UV_SYNC_SELECT', text="Compare A/B").compare = True
     layout.operator("kanvas.create_arrow", icon='TRIA_RIGHT', text="Arrow")
     layout.operator("kanvas.create_frame", icon='FULLSCREEN_ENTER', text="Frame")
 

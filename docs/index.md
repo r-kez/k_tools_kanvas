@@ -20,6 +20,7 @@ This documentation is written for people who use Kanvas. It explains what each t
 | [Arranging items](arranging.md) | Align, distribute, Pack, size matching, and focusing |
 | [Frames](frames.md) | Grouping items and keeping boards tidy |
 | [Text cards and checklists](text-cards.md) | Notes, Markdown, and task lists |
+| [Comparing two images](comparison.md) | A/B comparison card with a divider |
 | [Arrows](arrows.md) | Connecting items with arrows |
 
 ## Marking up images

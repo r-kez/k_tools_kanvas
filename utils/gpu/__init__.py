@@ -853,6 +853,14 @@ def _draw_frame_labels():
         card_rects.append((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
         # Paint each card and its text together so the next card covers both.
         draw_text_card(text_item, region=region)
+        if text_item.text_compare:
+            from .gpu_compare import draw_compare_card
+            try:
+                draw_compare_card(text_item, region, settings,
+                                  (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+            except Exception as exc:
+                print(f"Kanvas comparison: {exc}")
+            continue
         draw_text_label(text_item, region)
         from .gpu_common import get_prefs
         prefs = get_prefs()

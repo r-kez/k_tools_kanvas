@@ -62,6 +62,7 @@ try:
         'kanvas.import_pureref',
         'kanvas.create_text',
         'kanvas.create_text',
+        'kanvas.create_text',
         'kanvas.create_arrow',
         'kanvas.create_frame',
     ], menu.layout.operators
@@ -69,7 +70,7 @@ try:
 
     empty_context = SimpleNamespace(layout=RecordingLayout())
     ops_menu.KANVAS_MT_ContextMenu.draw(empty_context, context)
-    assert empty_context.layout.operators.count('kanvas.create_text') == 2
+    assert empty_context.layout.operators.count('kanvas.create_text') == 3
 
     selected = tree.kanvas_settings.images.add()
     selected.item_type = 'TEXT'

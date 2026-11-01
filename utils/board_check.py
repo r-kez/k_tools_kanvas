@@ -45,6 +45,14 @@ def _broken_links(settings):
             if link.card_id not in cards]
 
 
+def _broken_compare(settings):
+    images = {item.item_id for item in settings.images if item.item_type == 'IMAGE'}
+    return [(card, side) for card in settings.images
+            if card.item_type == 'TEXT' and card.text_compare
+            for side in ('a', 'b')
+            if getattr(card, f'compare_{side}_id') and getattr(card, f'compare_{side}_id') not in images]
+
+
 def _dangling_ends(settings):
     known = {item.item_id for item in settings.images}
     return [(arrow, side) for arrow in settings.arrows for side in ('start', 'end')
@@ -84,6 +92,9 @@ def find_problems(settings):
     regions = _broken_regions(settings)
     if regions:
         problems.append(Problem('REGION', f'{len(regions)} color region(s) follow a checklist task that no longer exists', True))
+    compare = _broken_compare(settings)
+    if compare:
+        problems.append(Problem('COMPARE', f'{len(compare)} comparison side(s) show an image that no longer exists', True))
     ends = _dangling_ends(settings)
     if ends:
         problems.append(Problem('ARROW', f'{len(ends)} arrow end(s) are attached to an item that no longer exists', True))
@@ -109,6 +120,9 @@ def fix_problems(settings):
         region.checklist_line_id = ''
         region.checklist_origin_card_id = ''
         region.checklist_origin_line_id = ''
+        changed += 1
+    for card, side in _broken_compare(settings):
+        setattr(card, f'compare_{side}_id', '')
         changed += 1
     for arrow, side in _dangling_ends(settings):
         set_endpoint(arrow, side, endpoint(settings, arrow, side))
