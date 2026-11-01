@@ -648,6 +648,16 @@ def _draw_callback_px(*args):
         except Exception:
             pass
 
+    # Comparison cards use the same pass and shader as the images they show.
+    for card_index in text_card_draw_indices(settings):
+        card = settings.images[card_index]
+        if card.text_compare:
+            try:
+                from .gpu_compare import draw_compare_content
+                draw_compare_content(card, settings, view_pixel_size)
+            except Exception as exc:
+                print(f"Kanvas comparison: {exc}")
+
     draw_checklist_links(settings, view_pixel_size, region)
     draw_arrows(settings, view_pixel_size)
 
@@ -852,15 +862,15 @@ def _draw_frame_labels():
             continue
         card_rects.append((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
         # Paint each card and its text together so the next card covers both.
-        draw_text_card(text_item, region=region)
         if text_item.text_compare:
-            from .gpu_compare import draw_compare_card
+            from .gpu_compare import draw_compare_overlay
             try:
-                draw_compare_card(text_item, region, settings,
-                                  (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+                draw_compare_overlay(text_item, region, settings,
+                                     (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
             except Exception as exc:
                 print(f"Kanvas comparison: {exc}")
             continue
+        draw_text_card(text_item, region=region)
         draw_text_label(text_item, region)
         from .gpu_common import get_prefs
         prefs = get_prefs()

@@ -1596,17 +1596,26 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
         idx, img = self._find_image_at_pos(context, mouse)
         if img and img.item_type == 'TEXT' and img.text_compare \
                 and not (event.shift or event.ctrl or event.alt):
-            from ..utils.gpu.gpu_compare import hit_compare_button
+            from ..utils.gpu.gpu_compare import (DIVIDER_GRAB_PIXELS, hit_compare_button,
+                                                 hit_compare_divider, next_mode)
             from ..utils.gpu.gpu_text import _region_bounds
             x0, y0, x1, y1 = _region_bounds(img, context.region.view2d)
-            side = hit_compare_button(img, (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)),
-                                      (event.mouse_region_x, event.mouse_region_y))
-            if side:
+            card_bounds = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+            position = (event.mouse_region_x, event.mouse_region_y)
+            part = hit_compare_button(img, card_bounds, position)
+            if part is None and hit_compare_divider(img, card_bounds, position, DIVIDER_GRAB_PIXELS):
+                part = 'DIVIDER'
+            if part:
                 _clear_image_selection(settings)
                 _clear_arrow_selection(settings)
                 img.is_selected = True
                 _set_canvas_active(settings, image_index=idx)
-                bpy.ops.kanvas.pick_compare_side('INVOKE_DEFAULT', item_id=img.item_id, side=side)
+                if part == 'MODE':
+                    img.compare_mode = next_mode(img.compare_mode)
+                elif part == 'DIVIDER':
+                    bpy.ops.kanvas.drag_compare_divider('INVOKE_DEFAULT', item_id=img.item_id)
+                else:
+                    bpy.ops.kanvas.pick_compare_side('INVOKE_DEFAULT', item_id=img.item_id, side=part)
                 context.area.tag_redraw()
                 return {'CANCELLED'}
         if img and img.item_type == 'TEXT' and not img.text_compare \

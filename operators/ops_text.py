@@ -350,3 +350,58 @@ class KANVAS_OT_PickCompareSide(KanvasTreeOnly, bpy.types.Operator):
         if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE'}:
             return {'RUNNING_MODAL'}
         return {'RUNNING_MODAL', 'PASS_THROUGH'}
+
+
+class KANVAS_OT_DragCompareDivider(KanvasTreeOnly, bpy.types.Operator):
+    """Move the divider of a comparison card while the mouse button is held."""
+    bl_idname = 'kanvas.drag_compare_divider'
+    bl_label = 'Move Comparison Divider'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    item_id: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+
+    def _card(self, context):
+        return next((item for item in get_settings(context).images
+                     if item.item_id == self.item_id and item.text_compare), None)
+
+    def _update(self, context, event):
+        from ..utils.gpu.gpu_compare import split_from_position
+        from ..utils.gpu.gpu_text import _region_bounds
+        card = self._card(context)
+        if card is None:
+            return False
+        x0, y0, x1, y1 = _region_bounds(card, self._region.view2d)
+        bounds = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+        card.compare_split = split_from_position(card, bounds, event.mouse_x - self._region.x)
+        self._area.tag_redraw()
+        return True
+
+    def invoke(self, context, event):
+        self._area = context.area
+        self._window = context.window
+        self._region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
+        if self._region is None or self._card(context) is None:
+            return {'CANCELLED'}
+        self._window.cursor_modal_set('MOVE_X')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self):
+        try:
+            self._window.cursor_modal_restore()
+        except (ReferenceError, RuntimeError):
+            pass
+
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end()
+            return {'CANCELLED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            self._end()
+            return {'FINISHED'}
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            if not self._update(context, event):
+                self._end()
+                return {'CANCELLED'}
+            return {'RUNNING_MODAL'}
+        return {'RUNNING_MODAL'}

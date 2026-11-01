@@ -869,6 +869,9 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
             new_img.compare_a_id = source.compare_a_id
             new_img.compare_b_id = source.compare_b_id
             new_img.compare_split = source.compare_split
+            new_img.compare_mode = source.compare_mode
+            new_img.compare_blend = source.compare_blend
+            new_img.compare_gain = source.compare_gain
             new_img.text_show_progress = source.text_show_progress
             new_img.text_markdown = source.text_markdown
             new_img.text_scroll = source.text_scroll

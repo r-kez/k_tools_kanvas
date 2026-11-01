@@ -412,6 +412,24 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
     compare_b_id: bpy.props.StringProperty(  # type: ignore
         name='Image B', description='Item shown as B in this comparison card', default='',
     )
+    compare_mode: bpy.props.EnumProperty(  # type: ignore
+        name='Mode',
+        description='How A and B are compared',
+        items=(
+            ('SPLIT', 'Split', 'A on one side of a divider and B on the other. Drag the divider on the card'),
+            ('FADE', 'Fade', 'B drawn over A with adjustable opacity'),
+            ('DIFF', 'Difference', 'Shows where A and B differ: black where they match, brighter where they do not'),
+        ),
+        default='SPLIT', update=update_text_appearance,
+    )
+    compare_blend: bpy.props.FloatProperty(  # type: ignore
+        name='B Opacity', description='How much of B shows over A in Fade mode',
+        default=0.5, min=0.0, max=1.0, subtype='FACTOR', update=update_text_appearance,
+    )
+    compare_gain: bpy.props.FloatProperty(  # type: ignore
+        name='Amplify', description='Brighten small differences in Difference mode',
+        default=1.0, min=1.0, max=10.0, update=update_text_appearance,
+    )
     compare_split: bpy.props.FloatProperty(  # type: ignore
         name='Divider',
         description='Where the divider sits: A is shown to its left and B to its right',
