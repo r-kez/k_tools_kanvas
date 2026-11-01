@@ -41,7 +41,7 @@ Both are in the **Selection** panel when images are selected.
 | --- | --- |
 | Frame the selection | `Numpad .` |
 | Find content that is off-screen | Click the **Recenter** button |
-| Find an item by name | Type in the **Search** field of the item list |
+| Find an item by name or content | Type in the **Search** field of the item list. It also looks inside cards, checklists, and color region names |
 
 ## Next
 

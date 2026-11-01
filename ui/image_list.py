@@ -18,8 +18,9 @@ class KANVAS_UL_image_list(bpy.types.UIList):
                     parent_index = frame_indices.get(name)
                     name = items[parent_index].parent_frame if parent_index is not None else ''
                 ancestors.append(chain)
+            from ..utils.item_search import item_matches
             matched = {index for index, item in enumerate(items)
-                       if query in item.name.casefold()}
+                       if item_matches(item, query)}
             visible = set(matched)
             for index in matched:
                 visible.update(frame_indices[name] for name in ancestors[index]

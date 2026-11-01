@@ -63,7 +63,7 @@ Press `N` over the canvas and open the **K-Tools** tab.
 
 The item list shows every item on the board. In the list you can:
 
-- **Search** by name. The **X** button clears the search.
+- **Search** by name, and also by the text inside cards and checklists and by the names of color regions (a task text for linked regions). Matching items stay visible together with the frames that hold them. The **X** button clears the search.
 - **Select** any item, including images that are covered by others on the canvas.
 - **Hide or show** an item with the eye icon. Hidden items stay on the board but are not drawn or editable.
 - **Lock** an item with the lock icon. A locked image, card, or frame cannot be selected, moved, transformed, duplicated, or deleted. Click the lock again to unlock it. Locking a frame also locks everything inside it.

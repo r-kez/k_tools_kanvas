@@ -919,7 +919,7 @@ class KanvasSettings(bpy.types.PropertyGroup):
     )
     list_search: bpy.props.StringProperty(  # type: ignore
         name='Search Items or Frames',
-        description='Filter the item list by item or frame name without hiding canvas content',
+        description='Filter the item list by name, card text, or color region name without hiding canvas content',
         default='',
         options={'SKIP_SAVE'},
     )
