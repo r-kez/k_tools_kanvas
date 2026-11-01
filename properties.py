@@ -719,6 +719,18 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         description='Mirror this image from top to bottom',
         default=False,
     )
+    value_gray: bpy.props.BoolProperty(  # type: ignore
+        name='Grayscale',
+        description='Show this image in grayscale to check its values (light and dark)',
+        default=False,
+        update=lambda self, context: _tag_markup_changed(self, context),
+    )
+    value_levels: bpy.props.IntProperty(  # type: ignore
+        name='Posterize',
+        description='Reduce this image to a few gray tones to check its values (0 is off, 2 to 12 tones)',
+        default=0, min=0, max=12,
+        update=lambda self, context: _tag_markup_changed(self, context),
+    )
     brightness: bpy.props.FloatProperty(  # type: ignore
         name='Brightness',
         description='Adjust the displayed brightness of this image',
@@ -973,6 +985,22 @@ class KanvasSettings(bpy.types.PropertyGroup):
         description='Mirror all selected images from top to bottom',
         get=_batch_adjustment_get('flip_v', False),
         set=_batch_adjustment_set('flip_v'),
+        options={'SKIP_SAVE'},
+    )
+
+    batch_value_gray: bpy.props.BoolProperty(  # type: ignore
+        name='Grayscale',
+        description='Show all selected images in grayscale',
+        get=_batch_adjustment_get('value_gray', False),
+        set=_batch_adjustment_set('value_gray'),
+        options={'SKIP_SAVE'},
+    )
+    batch_value_levels: bpy.props.IntProperty(  # type: ignore
+        name='Posterize',
+        description='Reduce all selected images to a few gray tones (0 is off, 2 to 12 tones)',
+        default=0, min=0, max=12,
+        get=_batch_adjustment_get('value_levels', 0),
+        set=_batch_adjustment_set('value_levels'),
         options={'SKIP_SAVE'},
     )
 

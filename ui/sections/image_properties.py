@@ -78,6 +78,10 @@ def draw_image_properties(layout, settings, item):
         row.prop(adjustment_owner, adjustment_prefix + "color_tint", text="")
         row.prop(adjustment_owner, adjustment_prefix + "use_color_correction", text="", icon='IMAGE')
 
+        row = col.row(align=True)
+        row.prop(adjustment_owner, adjustment_prefix + "value_gray", text="Grayscale", toggle=True)
+        row.prop(adjustment_owner, adjustment_prefix + "value_levels", text="Posterize")
+
 def _draw_auto_select(layout, img, tool_property):
     """Analyze button and tool toggle for Auto Select (explicit, opt-in)."""
     from ...utils import sam_engine

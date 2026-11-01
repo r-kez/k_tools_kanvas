@@ -17,7 +17,7 @@ from .gpu_theme import (enable_soft_text_shadow, disable_soft_text_shadow,
 from .gpu_arrow import draw_arrows, draw_arrow_labels, draw_text_anchor_handles
 from .gpu_checklist import draw_checklist_links
 from .gpu_recenter import draw_recenter_prompt
-from .gpu_common import begin_draw_pass, end_draw_pass
+from .gpu_common import begin_draw_pass, end_draw_pass, value_view_uniforms
 from ..item_geometry import item_bounds, image_draw_indices, text_card_draw_indices
 
 def get_frame(settings, frame_name):
@@ -613,6 +613,7 @@ def _draw_callback_px(*args):
                 except Exception as exc:
                     print(f"Kanvas: Could not build color markup for {img_item.name}: {exc}")
 
+            value_mode, value_levels = value_view_uniforms(img_item)
             if img_item.mask_editing:
                 tex.draw(
                     img_item.location, final_scale, img_item.shear_xy,
@@ -621,6 +622,7 @@ def _draw_callback_px(*args):
                     contrast=img_item.contrast, saturation=img_item.saturation,
                     flip_h=img_item.flip_h, flip_v=img_item.flip_v,
                     use_color_correction=img_item.use_color_correction,
+                    value_mode=value_mode, value_levels=value_levels,
                 )
 
             tex.draw(
@@ -640,6 +642,7 @@ def _draw_callback_px(*args):
                 mask_enabled=img_item.mask_enabled,
                 markup_texture=markup_texture,
                 markup_enabled=img_item.markup_visible,
+                value_mode=value_mode, value_levels=value_levels,
             )
 
         except Exception:

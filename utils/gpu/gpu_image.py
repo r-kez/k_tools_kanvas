@@ -4,7 +4,8 @@ import gpu
 import os
 import time
 from gpu_extras.batch import batch_for_shader
-from .gpu_common import rotate_point, get_prefs, get_kanvas_shader
+from .gpu_common import (rotate_point, get_prefs, get_kanvas_shader,
+                         shader_supports_value_view)
 from .gpu_theme import studio_enabled
 from ..hidden_datablocks import hidden_name
 from ..gizmo_geometry import handle_layout, collective_handle_layout
@@ -203,7 +204,8 @@ class KanvasTexture:
              brightness=1.0, contrast=1.0, saturation=1.0,
              flip_h=False, flip_v=False, use_color_correction=True,
              mask_texture=None, mask_enabled=False,
-             markup_texture=None, markup_enabled=False):
+             markup_texture=None, markup_enabled=False,
+             value_mode=0.0, value_levels=0.0):
         if not self.texture: return
         shader = get_kanvas_shader()
         if not shader:
@@ -245,6 +247,9 @@ class KanvasTexture:
             shader.uniform_float("use_color_correction", float(use_color_correction))
             shader.uniform_float("mask_enabled", float(mask_enabled and mask_texture is not None))
             shader.uniform_float("markup_enabled", float(markup_enabled and markup_texture is not None))
+            if shader_supports_value_view():
+                shader.uniform_float("value_mode", value_mode)
+                shader.uniform_float("value_levels", value_levels)
             batch.draw(shader)
             gpu.state.blend_set('NONE')
         except Exception as e:

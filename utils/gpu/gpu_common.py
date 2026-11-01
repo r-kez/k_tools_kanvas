@@ -76,8 +76,26 @@ _custom_shader = None
 #      makes each name unique for the lifetime of the process.
 _shader_iface_counter = 0
 
+# The value-check code (grayscale / posterize) is optional. If a driver rejects
+# the extended shader, it is rebuilt without it so images are always drawn.
+_value_view_supported = True
+
+
+def shader_supports_value_view():
+    return _value_view_supported and _custom_shader is not None
+
+
+def value_view_uniforms(item):
+    """(mode, levels) for the shader: 0 normal, 1 grayscale, 2 posterized."""
+    levels = item.value_levels
+    if levels >= 2:
+        return 2.0, float(levels)
+    return (1.0 if item.value_gray else 0.0), 0.0
+
+
 def get_kanvas_shader():
-    global _custom_shader, _shader_iface_counter
+    global _custom_shader, _shader_iface_counter, _value_view_supported
+    with_value_view = _value_view_supported
 
     if _custom_shader is not None:
         try:
@@ -105,6 +123,9 @@ def get_kanvas_shader():
         shader_info.push_constant('FLOAT', "use_color_correction")
         shader_info.push_constant('FLOAT', "mask_enabled")
         shader_info.push_constant('FLOAT', "markup_enabled")
+        if with_value_view:
+            shader_info.push_constant('FLOAT', "value_mode")
+            shader_info.push_constant('FLOAT', "value_levels")
 
         shader_info.sampler(0, 'FLOAT_2D', "image")
         shader_info.sampler(1, 'FLOAT_2D', "mask_image")
@@ -137,6 +158,15 @@ def get_kanvas_shader():
             "  if (use_color_correction > 0.5) {"
             "    c = pow(c, vec3(1.0 / 2.2));"
             "  }"
+            + (
+            "  if (value_mode > 0.5) {"
+            "    float g = dot(c, vec3(0.2126, 0.7152, 0.0722));"
+            "    if (value_mode > 1.5) {"
+            "      float steps = max(value_levels, 2.0);"
+            "      g = floor(clamp(g, 0.0, 0.9999) * steps) / (steps - 1.0);"
+            "    }"
+            "    c = vec3(clamp(g, 0.0, 1.0));"
+            "  }" if with_value_view else "") +
             "  float mask_alpha = mask_enabled > 0.5 ? texture(mask_image, v_TexCoord).r : 1.0;"
             "  if (markup_enabled > 0.5) {"
             "    vec4 markup = texture(markup_image, v_TexCoord);"
@@ -150,6 +180,11 @@ def get_kanvas_shader():
         return _custom_shader
 
     except Exception as e:
+        if with_value_view:
+            print(f"Kanvas: value-check shader failed ({e}); using the basic shader")
+            _value_view_supported = False
+            _custom_shader = None
+            return get_kanvas_shader()
         print(f"Kanvas: CRITICAL Error creating shader: {e}")
         return None
 
