@@ -238,6 +238,63 @@ def rounded_head_arms(points, thickness):
             (base_x + dy * spread, base_y - dx * spread))
 
 
+def polyline_length(points):
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
+
+
+def slice_polyline(points, start, end):
+    """The part of a polyline between two arc lengths (clamped to its ends)."""
+    total = polyline_length(points)
+    start, end = max(0.0, start), min(total, end)
+    if end - start <= 1e-9:
+        return []
+    result, walked = [], 0.0
+    for a, b in zip(points, points[1:]):
+        segment = math.dist(a, b)
+        if segment <= 1e-12:
+            continue
+        low, high = walked, walked + segment
+        walked = high
+        if high <= start or low >= end:
+            continue
+        t0 = max(0.0, (start - low) / segment)
+        t1 = min(1.0, (end - low) / segment)
+        first = (a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0)
+        last = (a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1)
+        if not result:
+            result.append(first)
+        result.append(last)
+    return result
+
+
+def dash_pattern(line_style, thickness):
+    """(dash, gap) lengths in canvas units; dots are zero-length dashes with round caps."""
+    if line_style == 'DASHED':
+        return 5.0 * thickness + 6.0, 3.0 * thickness + 4.0
+    if line_style == 'DOTTED':
+        return 0.05, 2.2 * thickness + 3.0
+    return 0.0, 0.0
+
+
+def dash_polylines(points, dash, gap):
+    """Split a polyline into dashes of `dash` length separated by `gap`."""
+    if dash <= 0 or gap < 0:
+        return [list(points)] if len(points) > 1 else []
+    total = polyline_length(points)
+    pieces, position = [], 0.0
+    while position < total:
+        piece = slice_polyline(points, position, min(position + dash, total))
+        if len(piece) > 1:
+            pieces.append(piece)
+        position += dash + gap
+    return pieces
+
+
+def head_reach(thickness):
+    """Arc length a head needs at one end of an arrow (covers both head styles)."""
+    return max(20.0, thickness * 6.5, 12.0 + thickness * 0.5) / 0.42
+
+
 def _distance_to_segment(point, a, b):
     dx, dy = b[0] - a[0], b[1] - a[1]
     length_sq = dx * dx + dy * dy

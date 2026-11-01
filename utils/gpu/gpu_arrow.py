@@ -139,6 +139,119 @@ def _filled_head_dimensions(thickness, length):
             max(5.0, half_width * 2.8))
 
 
+def _draw_filled_arrow(shader, smooth_shader, points, arrow, length,
+                       pixel_size, color):
+    start, end = points[0], points[-1]
+    half_width, head_length, head_width = _filled_head_dimensions(
+        arrow.thickness, length)
+    shaft = [start]
+    remaining = length - head_length
+    for a, b in zip(points, points[1:]):
+        segment = math.dist(a, b)
+        if remaining > segment:
+            shaft.append(b)
+            remaining -= segment
+        else:
+            factor = remaining / segment if segment else 0.0
+            shaft.append((a[0] + (b[0] - a[0]) * factor,
+                          a[1] + (b[1] - a[1]) * factor))
+            break
+    left, right = [], []
+    for i, p in enumerate(shaft):
+        before, after = shaft[max(0, i - 1)], shaft[min(len(shaft) - 1, i + 1)]
+        dx, dy = after[0] - before[0], after[1] - before[1]
+        span = max(1e-8, math.hypot(dx, dy))
+        nx, ny = -dy / span, dx / span
+        left.append((p[0] + nx * half_width, p[1] + ny * half_width))
+        right.append((p[0] - nx * half_width, p[1] - ny * half_width))
+    dx, dy = end[0] - shaft[-1][0], end[1] - shaft[-1][1]
+    span = max(1e-8, math.hypot(dx, dy))
+    nx, ny = -dy / span, dx / span
+    head_left = (shaft[-1][0] + nx * head_width,
+                 shaft[-1][1] + ny * head_width)
+    head_right = (shaft[-1][0] - nx * head_width,
+                  shaft[-1][1] - ny * head_width)
+    perimeter = left + [head_left, end, head_right] + list(reversed(right))
+    geometry = []
+    for i in range(len(shaft) - 1):
+        geometry.extend((left[i], right[i], right[i + 1],
+                         left[i], right[i + 1], left[i + 1]))
+    geometry.extend((end, head_left, head_right))
+    _triangles(shader, geometry, color)
+    fringe, colors = _antialias_fringe(
+        perimeter, min(pixel_size, half_width * 0.5), color)
+    if fringe:
+        smooth_shader.bind()
+        batch_for_shader(smooth_shader, 'TRIS', {
+            'pos': fringe, 'color': colors,
+        }).draw(smooth_shader)
+
+
+def _draw_plain_strokes(shader, smooth_shader, polylines, thickness,
+                        pixel_size, color):
+    """Round-capped strokes without a head: dashes, dots and head-less lines."""
+    radius = thickness * 0.5
+    geometry, fringe, fringe_colors = [], [], []
+    for stroke in polylines:
+        triangles, contour = _rounded_stroke(stroke, radius)
+        geometry.extend(triangles)
+        if contour:
+            vertices, colors = _antialias_fringe(
+                contour, min(pixel_size, radius * 0.5), color)
+            fringe.extend(vertices)
+            fringe_colors.extend(colors)
+    if fringe:
+        smooth_shader.bind()
+        batch_for_shader(smooth_shader, 'TRIS', {
+            'pos': fringe, 'color': fringe_colors,
+        }).draw(smooth_shader)
+    _triangles(shader, geometry, color)
+
+
+def _draw_headed(shader, smooth_shader, points, arrow, pixel_size, color, prefs):
+    from ..arrow_geometry import polyline_length
+
+    length = polyline_length(points)
+    if length < 1e-6:
+        return
+    if prefs and prefs.arrow_style == 'ROUNDED':
+        _draw_rounded_arrow(shader, smooth_shader, points, arrow, pixel_size, color)
+    else:
+        _draw_filled_arrow(shader, smooth_shader, points, arrow, length,
+                           pixel_size, color)
+
+
+def _draw_arrow_body(shader, smooth_shader, points, arrow, length,
+                     pixel_size, color, prefs):
+    """Line style (solid, dashed, dotted) and head placement of one arrow."""
+    from ..arrow_geometry import (dash_pattern, dash_polylines, head_reach,
+                                  slice_polyline)
+
+    heads = arrow.head_style
+    has_end, has_start = heads in ('END', 'BOTH'), heads == 'BOTH'
+    reach = min(head_reach(arrow.thickness), length * 0.5 if has_start else length)
+    if arrow.line_style == 'SOLID':
+        if has_end:
+            _draw_headed(shader, smooth_shader, points, arrow, pixel_size, color, prefs)
+        else:
+            _draw_plain_strokes(shader, smooth_shader, [points], arrow.thickness,
+                                pixel_size, color)
+    else:
+        begin = reach if has_start else 0.0
+        finish = length - reach if has_end else length
+        dash, gap = dash_pattern(arrow.line_style, arrow.thickness)
+        body = slice_polyline(points, begin, finish)
+        if len(body) > 1:
+            _draw_plain_strokes(shader, smooth_shader, dash_polylines(body, dash, gap),
+                                arrow.thickness, pixel_size, color)
+        if has_end:
+            _draw_headed(shader, smooth_shader, slice_polyline(points, length - reach, length),
+                         arrow, pixel_size, color, prefs)
+    if has_start:
+        _draw_headed(shader, smooth_shader, slice_polyline(points, 0.0, reach)[::-1],
+                     arrow, pixel_size, color, prefs)
+
+
 def draw_arrows(settings, pixel_size):
     from ..arrow_geometry import (curve_midpoint, curve_points,
                                   image_anchor_points)
@@ -161,54 +274,8 @@ def draw_arrows(settings, pixel_size):
             length = sum(math.dist(a, b) for a, b in zip(points, points[1:]))
             if length < 1e-6:
                 continue
-            color = tuple(arrow.color)
-            if prefs and prefs.arrow_style == 'ROUNDED':
-                _draw_rounded_arrow(shader, smooth_shader, points,
-                                    arrow, pixel_size, color)
-            else:
-                half_width, head_length, head_width = _filled_head_dimensions(
-                    arrow.thickness, length)
-                shaft = [start]
-                remaining = length - head_length
-                for a, b in zip(points, points[1:]):
-                    segment = math.dist(a, b)
-                    if remaining > segment:
-                        shaft.append(b)
-                        remaining -= segment
-                    else:
-                        factor = remaining / segment if segment else 0.0
-                        shaft.append((a[0] + (b[0] - a[0]) * factor,
-                                      a[1] + (b[1] - a[1]) * factor))
-                        break
-                left, right = [], []
-                for i, p in enumerate(shaft):
-                    before, after = shaft[max(0, i - 1)], shaft[min(len(shaft) - 1, i + 1)]
-                    dx, dy = after[0] - before[0], after[1] - before[1]
-                    span = max(1e-8, math.hypot(dx, dy))
-                    nx, ny = -dy / span, dx / span
-                    left.append((p[0] + nx * half_width, p[1] + ny * half_width))
-                    right.append((p[0] - nx * half_width, p[1] - ny * half_width))
-                dx, dy = end[0] - shaft[-1][0], end[1] - shaft[-1][1]
-                span = max(1e-8, math.hypot(dx, dy))
-                nx, ny = -dy / span, dx / span
-                head_left = (shaft[-1][0] + nx * head_width,
-                             shaft[-1][1] + ny * head_width)
-                head_right = (shaft[-1][0] - nx * head_width,
-                              shaft[-1][1] - ny * head_width)
-                perimeter = left + [head_left, end, head_right] + list(reversed(right))
-                geometry = []
-                for i in range(len(shaft) - 1):
-                    geometry.extend((left[i], right[i], right[i + 1],
-                                     left[i], right[i + 1], left[i + 1]))
-                geometry.extend((end, head_left, head_right))
-                _triangles(shader, geometry, color)
-                fringe, colors = _antialias_fringe(
-                    perimeter, min(pixel_size, half_width * 0.5), color)
-                if fringe:
-                    smooth_shader.bind()
-                    batch_for_shader(smooth_shader, 'TRIS', {
-                        'pos': fringe, 'color': colors,
-                    }).draw(smooth_shader)
+            _draw_arrow_body(shader, smooth_shader, points, arrow, length,
+                             pixel_size, tuple(arrow.color), prefs)
             if not arrow.is_locked and (index == settings.active_arrow_index or arrow.is_selected):
                 for point in (start, end):
                     _triangles(shader, _square(point, 4.5 * pixel_size),

@@ -15,6 +15,8 @@ def draw_arrows(layout, settings):
             col.prop(arrow, "label", text="Label")
             col.prop(arrow, "color", text="Color")
             col.prop(arrow, "thickness", text="Thickness")
+            col.prop(arrow, "line_style", text="Line")
+            col.prop(arrow, "head_style", text="Heads")
             col.operator("kanvas.reset_arrow_curvature", text="Reset Curvature",
                          icon='LOOP_BACK')
             from ...utils.gpu import get_item_by_id

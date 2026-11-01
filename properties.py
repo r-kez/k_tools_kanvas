@@ -913,6 +913,28 @@ class KanvasArrow(bpy.types.PropertyGroup):  # type: ignore
         min=1.0,
         max=20.0,
     )
+    line_style: bpy.props.EnumProperty(  # type: ignore
+        name='Line',
+        description='How the arrow line is drawn',
+        items=(
+            ('SOLID', 'Solid', 'Continuous line'),
+            ('DASHED', 'Dashed', 'Line made of dashes'),
+            ('DOTTED', 'Dotted', 'Line made of dots'),
+        ),
+        default='SOLID',
+    )
+    head_style: bpy.props.EnumProperty(  # type: ignore
+        name='Heads',
+        description='Where the arrow has a head',
+        items=(
+            ('END', 'End', 'Arrowhead at the end'),
+            ('BOTH', 'Both', 'Arrowheads at both ends'),
+            ('NONE', 'None', 'Plain line without arrowheads'),
+        ),
+        default='END',
+    )
+
+
 class KanvasSettings(bpy.types.PropertyGroup):
     images: bpy.props.CollectionProperty(  # type: ignore
         type=KanvasImageItem,

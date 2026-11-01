@@ -43,6 +43,8 @@ Arrows are listed in the **Items** panel. Select one to edit it:
 | **Label** | Text shown at the midpoint of the arrow |
 | **Color** | Arrow color |
 | **Thickness** | Stroke width, 1 to 20 |
+| **Line** | Solid, Dashed or Dotted |
+| **Heads** | Arrowhead at the End (default), at Both ends, or None for a plain line |
 | **Lock Arrow** | Prevents selecting, moving, and deleting the arrow |
 
 The label follows the middle of the curve. While an arrow is selected, its label shifts slightly so the center handle stays reachable. When space is tight, the drawn label is shortened, and the full text stays in the panel.
