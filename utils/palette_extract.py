@@ -74,3 +74,21 @@ def dominant_colors(rgb, count=6, iterations=12, seed=7):
 
 def hex_name(color):
     return '#{:02X}{:02X}{:02X}'.format(*(round(max(0.0, min(1.0, v)) * 255) for v in color))
+
+
+def pixel_color_at(image, uv):
+    """Display color of the source pixel at an image UV (0..1, origin bottom-left).
+
+    This is the original pixel, before any Kanvas brightness, contrast or tint.
+    Float images get the same approximate sRGB encoding used when extracting a palette.
+    """
+    width, height = image.size
+    if width <= 0 or height <= 0:
+        raise ValueError('Image has no pixels')
+    x = min(width - 1, max(0, int(uv[0] * width)))
+    y = min(height - 1, max(0, int(uv[1] * height)))
+    start = (y * width + x) * 4
+    rgb = np.clip(np.array(image.pixels[start:start + 3], dtype=np.float32), 0.0, 1.0)
+    if image.is_float:
+        rgb = rgb ** (1.0 / 2.2)
+    return tuple(float(v) for v in rgb)

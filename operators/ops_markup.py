@@ -370,6 +370,85 @@ class KANVAS_OT_ExtractPalette(KanvasTreeOnly, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def image_under_point(settings, point):
+    """Topmost visible image containing a canvas point, with the UV there."""
+    from ..utils.arrow_geometry import image_uv_at
+    candidates = sorted((item for item in settings.images
+                         if item.item_type == 'IMAGE' and item.show_in_editor
+                         and item.image_data),
+                        key=lambda item: item.z_index, reverse=True)
+    for item in candidates:
+        uv = image_uv_at(item, point)
+        if uv is not None:
+            return item, uv
+    return None, None
+
+
+class KANVAS_OT_PickPixelColor(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.pick_pixel_color'
+    bl_label = 'Pick Color'
+    bl_description = ('Click a pixel of an image to add a color region with its exact color and '
+                      'copy the hex code. Shift+click only copies the code. Reads the original '
+                      'pixel, before brightness, contrast or tint. Esc cancels')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        self._area = context.area
+        self._window = context.window
+        self._region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
+        if self._region is None:
+            return {'CANCELLED'}
+        self._window.cursor_modal_set('EYEDROPPER')
+        context.workspace.status_text_set('Click a pixel to pick its color  |  Shift+click: copy hex only  |  Esc: cancel')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        try:
+            self._window.cursor_modal_restore()
+            context.workspace.status_text_set(None)
+        except (ReferenceError, RuntimeError):
+            pass
+
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context)
+            return {'CANCELLED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            region = self._region
+            x, y = event.mouse_x - region.x, event.mouse_y - region.y
+            if not (0 <= x < region.width and 0 <= y < region.height):
+                return {'RUNNING_MODAL'}   # a click on the sidebar or header is ignored
+            from ..utils.kanvas_data import get_settings
+            from ..utils.palette_extract import hex_name, pixel_color_at
+            settings = get_settings(context)
+            item, uv = image_under_point(settings, region.view2d.region_to_view(x, y))
+            if item is None:
+                self.report({'WARNING'}, 'Click on an image')
+                return {'RUNNING_MODAL'}
+            try:
+                color = pixel_color_at(item.image_data, uv)
+            except Exception as exc:
+                self._end(context)
+                self.report({'ERROR'}, f'Could not read the pixel: {exc}')
+                return {'CANCELLED'}
+            code = hex_name(color)
+            context.window_manager.clipboard = code
+            self._end(context)
+            if event.shift:
+                self.report({'INFO'}, f'Copied {code}')
+                return {'CANCELLED'}
+            region_item = _add_region(item)
+            region_item.color = color
+            region_item.name = code
+            self.report({'INFO'}, f'Added {code} to {item.name} (hex copied)')
+            self._area.tag_redraw()
+            return {'FINISHED'}
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE'}:
+            return {'RUNNING_MODAL'}
+        return {'RUNNING_MODAL', 'PASS_THROUGH'}
+
+
 class KANVAS_OT_ExportMarkupMasks(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.export_markup_masks'
     bl_label = 'Export Color Masks'

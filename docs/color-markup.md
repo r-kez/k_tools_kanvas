@@ -22,7 +22,10 @@ Select an image and open the **Markup** subpanel under **Selection**. The checkb
 
 ## Colors from the image
 
-The eyedropper button next to **Edit Colors** adds one color region for each **dominant color** of the image. Choose how many (2 to 12), and Kanvas creates a region for each, named with its hex code (for example `#D92626`), biggest areas first. Colors that are almost the same are merged, so a flat image may give fewer than you asked for.
+Two buttons sit next to **Edit Colors**:
+
+- **Eyedropper** picks one pixel. Click it, then click a point on any image: Kanvas adds a color region with that exact color, named with its hex code, and copies the code to the clipboard. **Shift+click** only copies the code. **Esc** or right-click cancels. It reads the original pixel, before Kanvas brightness, contrast or tint.
+- **Color swatch** adds one color region for each **dominant color** of the image. Choose how many (2 to 12), and Kanvas creates a region for each, named with its hex code (for example `#D92626`), biggest areas first. Colors that are almost the same are merged, so a flat image may give fewer than you asked for.
 
 The regions start empty. Paint them like any other region, or use them as a palette to pick from. The image file is never changed.
 
