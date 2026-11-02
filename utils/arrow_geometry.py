@@ -96,6 +96,16 @@ def image_anchor_points(item):
             if (position := image_point_from_uv(item, uv)) is not None]
 
 
+def attachable_anchor_points(item):
+    """Snap targets worth showing while an arrow end is being placed."""
+    if item.item_type == 'IMAGE':
+        return image_anchor_points(item) if item.image_data else []
+    if item.item_type == 'SHAPE':
+        from .shape_geometry import anchor_points
+        return anchor_points(item)
+    return []
+
+
 def endpoint(settings, arrow, side):
     stored = tuple(getattr(arrow, side))
     item_id = getattr(arrow, side + '_item_id')
@@ -107,6 +117,9 @@ def endpoint(settings, arrow, side):
     uv = getattr(arrow, side + '_uv')
     if item.item_type == 'IMAGE':
         return image_point_from_uv(item, uv) or stored
+    if item.item_type == 'SHAPE':
+        from .shape_geometry import point_from_uv
+        return point_from_uv(item, uv)
     if item.item_type == 'TEXT':
         line_id = getattr(arrow, side + '_line_id')
         if line_id and item.text_checklist:
@@ -328,6 +341,25 @@ def anchor_candidate(settings, point, pixel_size):
         uv, anchor = min(text_anchor_points(card),
                          key=lambda pair: math.dist(point, pair[1]))
         return card.item_id, uv, anchor
+
+    # Shapes sit above images and below cards. An end snaps to a corner or the middle of
+    # a side, then to the nearest point of the outline, and otherwise attaches exactly
+    # where it is inside the shape.
+    from . import shape_geometry
+    shapes = sorted((item for item in settings.images
+                     if item.item_type == 'SHAPE' and item.show_in_editor),
+                    key=lambda item: item.z_index, reverse=True)
+    for shape in shapes:
+        anchors = shape_geometry.anchor_points(shape)
+        if anchors:
+            uv, anchor = min(anchors, key=lambda pair: math.dist(point, pair[1]))
+            if math.dist(point, anchor) <= radius:
+                return shape.item_id, uv, anchor
+        edge = shape_geometry.outline_attach(shape, point, radius * 0.6)
+        if edge is not None:
+            return shape.item_id, edge[0], edge[1]
+        if shape_geometry.contains(shape, point):
+            return shape.item_id, shape_geometry.uv_at(shape, point), point
 
     images = sorted((item for item in settings.images
                      if item.item_type == 'IMAGE' and item.show_in_editor

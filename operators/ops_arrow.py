@@ -350,7 +350,8 @@ class KANVAS_OT_DragArrow(KanvasTreeOnly, bpy.types.Operator):
         }
         self.mixed_items = ([(item, tuple(item.location)) for item in settings.images
                              if item.is_selected and not item.is_locked
-                             and item.show_in_editor and item.item_type in {'IMAGE', 'TEXT'}]
+                             and item.show_in_editor
+                             and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
                             if self.part == 'body' else [])
         from ..utils.arrow_geometry import capture_selected_arrow_move
         self.body_saved = (capture_selected_arrow_move(

@@ -86,7 +86,7 @@ Select the item whose look you want, choose **Copy Style**, then select one or m
 
 | Action | Shortcut |
 | --- | --- |
-| Duplicate and move the copy | `Shift + D` |
+| Duplicate every selected item and move the copies | `Shift + D` |
 | Rename the active item | `F2` |
 | Remove the selection | `X` or `Delete` |
 

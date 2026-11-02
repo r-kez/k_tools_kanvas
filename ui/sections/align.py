@@ -1,7 +1,7 @@
 def alignable_count(settings):
     return sum(1 for item in settings.images
                if item.is_selected and item.show_in_editor and not item.is_locked
-               and item.item_type in {'IMAGE', 'TEXT'})
+               and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'})
 
 
 def draw_align(layout, settings):

@@ -9,11 +9,15 @@ from ..utils.gpu.gpu_visibility import image_intersects_view
 
 _active_modal_areas = set()
 _box_armed_areas = set()
+# Area key -> shape kind waiting for the next canvas drag. Like Box Select, arming is
+# plain state, not a modal operator, so nothing stays running while the user is idle.
+_shape_armed_areas = {}
 
 
 def clear_modal_areas():
     _active_modal_areas.clear()
     _box_armed_areas.clear()
+    _shape_armed_areas.clear()
 
 
 def _modifier_held(event, modifier):
@@ -102,7 +106,10 @@ def _undo_content_signature(settings):
                   tuple(item.scale_xy), item.scale_master, tuple(item.shear_xy),
                   item.rotation, item.z_index, item.parent_frame,
                   item.frame_width, item.frame_height, item.auto_resize,
-                  item.text_width, item.text_height, item.text_scale)
+                  item.text_width, item.text_height, item.text_scale,
+                  item.shape_width, item.shape_height,
+                  tuple(tuple(v.co) for v in item.shape_vertices)
+                  if item.item_type == 'SHAPE' else ())
                  for item in settings.images)
 
 
@@ -166,9 +173,11 @@ class KanvasInteractionHelpers:
         self.init_mouse_local = rotate_point((dx, dy), (0, 0), -img.rotation)
 
         self.multi_targets = []
+        self.init_shape_size = (img.shape_width, img.shape_height)
         selected_images = [i for i in settings.images if i.is_selected and i.show_in_editor
                            and not i.is_locked
                            and ((i.item_type == 'IMAGE' and i.image_data)
+                                or i.item_type == 'SHAPE'
                                 or (mode == 'MOVE' and i.item_type == 'TEXT'))]
 
         if len(selected_images) > 1:
@@ -178,6 +187,7 @@ class KanvasInteractionHelpers:
                 tex = get_cached_texture(item.image_data) if item.image_data else None
                 w, h = ((tex.texture.width, tex.texture.height) if (tex and tex.texture)
                         else item.image_data.size if item.image_data
+                        else (item.shape_width, item.shape_height) if item.item_type == 'SHAPE'
                         else (item.text_width, item.text_height))
                 if w > 0 and h > 0:
                     data_list.append((
@@ -323,6 +333,27 @@ class KanvasInteractionHelpers:
             return ((point[0] - mouse_pos[0]) ** 2
                     + (point[1] - mouse_pos[1]) ** 2) <= hit_radius ** 2
 
+        active_shape = (settings.images[settings.active_image_index]
+                        if 0 <= settings.active_image_index < len(settings.images) else None)
+        if active_shape is not None and active_shape.item_type == 'SHAPE':
+            # A shape has its own handles, and only while it is the one selected item.
+            if (not active_shape.is_selected or not active_shape.show_in_editor
+                    or active_shape.is_locked or active_shape.shape_edit_vertices
+                    or sum(1 for item in settings.images if item.is_selected) != 1):
+                return -1
+            from ..utils import shape_geometry
+            corners, edges, _, rotate = shape_geometry.gizmo_layout(active_shape, s_view)
+            if settings.show_rotate_handles and near(rotate):
+                return 8
+            if settings.show_scale_handles:
+                for i, p in enumerate(corners):
+                    if near(p):
+                        return i
+                for i, p in enumerate(edges):
+                    if near(p):
+                        return i + 4
+            return -1
+
         if multi_select:
             # Testa gizmos da bounding box coletiva
             data_list = []
@@ -392,13 +423,26 @@ class KanvasInteractionHelpers:
         Retorna (None, None) se nada encontrado.
         """
         settings = get_settings(context)
-        from ..utils.item_geometry import image_draw_indices, text_card_draw_indices
+        from ..utils.item_geometry import (image_draw_indices, shape_draw_indices,
+                                           text_card_draw_indices)
         sorted_indices = list(reversed(text_card_draw_indices(settings)))
+        sorted_indices.extend(reversed(shape_draw_indices(settings)))
         sorted_indices.extend(reversed(image_draw_indices(settings)))
+        view_pixel_size = 1.0
+        try:
+            v2d = context.region.view2d
+            view_pixel_size = abs(v2d.region_to_view(1, 0)[0] - v2d.region_to_view(0, 0)[0])
+        except (AttributeError, ReferenceError):
+            pass
 
         for idx in sorted_indices:
             img = settings.images[idx]
             if img.is_locked:
+                continue
+            if img.item_type == 'SHAPE':
+                from ..utils import shape_geometry
+                if shape_geometry.hit_shape(img, mouse_pos, 6.0 * view_pixel_size):
+                    return idx, img
                 continue
             if img.item_type == 'TEXT' and img.show_in_editor:
                 from ..utils.item_geometry import item_bounds
@@ -435,6 +479,15 @@ class KanvasInteractionHelpers:
 
         return None, None
 
+    def _owning_group(self, settings, item):
+        """(index, group) holding this item, or (-1, None)."""
+        from ..utils.gpu import owning_group
+        group = owning_group(settings, item)
+        if group is None:
+            return -1, None
+        return next(i for i, other in enumerate(settings.images)
+                    if other.item_id == group.item_id), group
+
     def _frame_hit(self, context, mouse_pos):
         from ..utils.gpu.gpu_frame import hit_test_frame
         from ..utils.gpu import visible_frames_in_draw_order, frame_has_content
@@ -465,7 +518,7 @@ class KanvasInteractionHelpers:
         self.init_mouse_view = mouse_pos
         self.last_mouse_pos = mouse_pos
         selected_frames = ([item for item in settings.images
-                            if item.item_type in {'FRAME', 'IMAGE', 'TEXT'}
+                            if item.item_type in {'FRAME', 'IMAGE', 'TEXT', 'SHAPE'}
                             and item.is_selected and item.show_in_editor]
                            if self.drag_mode == 'FRAME_MOVE' else [])
         if frame not in selected_frames:
@@ -491,10 +544,134 @@ class KanvasInteractionHelpers:
                                item.frame_width, item.frame_height) for item in moved.values()
                               if item.item_type == 'FRAME']
         self.frame_children = [(item.item_id, tuple(item.location)) for item in moved.values()
-                               if item.item_type in {'IMAGE', 'TEXT'}]
+                               if item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
         from ..utils.arrow_geometry import capture_selected_arrow_move
         self.arrow_move_snapshots = (capture_selected_arrow_move(settings, moved)
                                      if self.drag_mode == 'FRAME_MOVE' else [])
+
+    # -----------------------------------------------------------------------
+    # Shapes: drawing a new one and editing its vertices
+    # -----------------------------------------------------------------------
+
+    def _shape_target(self, settings):
+        from ..utils.gpu import get_item_by_id
+        return get_item_by_id(settings, getattr(self, 'shape_target_id', None) or '')
+
+    def _start_shape_draw(self, context, settings, kind, mouse):
+        from .ops_shape import new_shape
+        from ..utils.shape_geometry import MIN_SIZE
+        item = new_shape(context, settings, kind, mouse, MIN_SIZE, MIN_SIZE, attach=False)
+        self.drag_mode = 'SHAPE_DRAW'
+        self.shape_target_id = item.item_id
+        self.shape_origin = (mouse[0], mouse[1])
+        self.init_mouse_view = (mouse[0], mouse[1])
+        self.last_mouse_pos = (mouse[0], mouse[1])
+
+    def _start_shape_vertex_gesture(self, context, event, settings, mouse, pixel_size):
+        """Start moving, adding or deleting a vertex of the shape being edited.
+
+        Returns the operator result, or None when the click is not on that shape's
+        vertices or edges and should be handled like any other click.
+        """
+        index = settings.active_image_index
+        shape = settings.images[index] if 0 <= index < len(settings.images) else None
+        if (shape is None or shape.item_type != 'SHAPE' or not shape.shape_edit_vertices
+                or not shape.is_selected or shape.is_locked or not shape.show_in_editor
+                or sum(1 for item in settings.images if item.is_selected) != 1):
+            return None
+        from ..utils import shape_geometry as sg
+        from .ops_shape import normalize_shape
+        start_kind = shape.shape_kind
+        start_vertices = [tuple(vertex.co) for vertex in shape.shape_vertices]
+        vertex = sg.hit_vertex(shape, mouse, 9.0 * pixel_size)
+        if vertex is not None and event.ctrl:
+            if len(shape.shape_vertices) <= sg.MIN_VERTICES:
+                self.report({'INFO'}, f'A shape needs at least {sg.MIN_VERTICES} vertices')
+                return {'CANCELLED'}
+            shape.shape_vertices.remove(vertex)
+            shape.shape_kind = 'POLYGON'
+            normalize_shape(shape)
+            context.area.tag_redraw()
+            return {'FINISHED'}
+        if vertex is None:
+            edge = sg.hit_edge(shape, mouse, 7.0 * pixel_size)
+            if edge is None:
+                return None
+            edge_index, t = edge
+            a = tuple(shape.shape_vertices[edge_index].co)
+            b = tuple(shape.shape_vertices[(edge_index + 1) % len(shape.shape_vertices)].co)
+            shape.shape_vertices.add().co = (a[0] + (b[0] - a[0]) * t,
+                                             a[1] + (b[1] - a[1]) * t)
+            vertex = edge_index + 1
+            shape.shape_vertices.move(len(shape.shape_vertices) - 1, vertex)
+        self.drag_mode = 'SHAPE_VERTEX'
+        self.shape_target_id = shape.item_id
+        self.shape_vertex_index = vertex
+        self.shape_vertex_start = (start_kind, start_vertices)
+        self.init_mouse_view = (mouse[0], mouse[1])
+        self.last_mouse_pos = (mouse[0], mouse[1])
+        return self._begin_gesture(context)
+
+    def _update_shape_gesture(self, settings, mouse_x, mouse_y, shift, ctrl):
+        from ..utils import shape_geometry as sg
+        from ..properties import suspend_frame_geometry_updates
+        item = self._shape_target(settings)
+        if item is None:
+            return
+        self.last_mouse_pos = (mouse_x, mouse_y)
+        if self.drag_mode == 'SHAPE_DRAW':
+            center, width, height = sg.box_from_drag(
+                self.shape_origin, (mouse_x, mouse_y), square=shift, from_center=ctrl)
+            with suspend_frame_geometry_updates():
+                item.shape_width = max(sg.MIN_SIZE, width)
+                item.shape_height = max(sg.MIN_SIZE, height)
+                item.location = center
+            return
+        point = (mouse_x, mouse_y)
+        if ctrl:
+            grid = max(1.0, float(settings.grid_size)) * (0.1 if shift else 1.0)
+            point = (round(point[0] / grid) * grid, round(point[1] / grid) * grid)
+        index = getattr(self, 'shape_vertex_index', -1)
+        if not 0 <= index < len(item.shape_vertices):
+            return
+        if item.shape_kind != 'POLYGON':
+            item.shape_kind = 'POLYGON'
+        item.shape_vertices[index].co = sg.canvas_to_unit(item, point)
+
+    def _finish_shape_gesture(self, context, settings):
+        from ..utils import shape_geometry as sg
+        from .ops_shape import attach_new_shape, normalize_shape
+        item = self._shape_target(settings)
+        mode = self.drag_mode
+        self.drag_mode = 'NONE'
+        self.shape_target_id = None
+        if item is not None and mode == 'SHAPE_DRAW':
+            view = context.region.view2d
+            pixel_size = abs(view.region_to_view(1, 0)[0] - view.region_to_view(0, 0)[0])
+            if math.dist(self.shape_origin, self.last_mouse_pos) < 4.0 * pixel_size:
+                item.shape_width, item.shape_height = sg.DEFAULT_SIZE
+                item.location = self.shape_origin
+            attach_new_shape(context, settings, item)
+        elif item is not None:
+            normalize_shape(item)
+        context.area.tag_redraw()
+
+    def _cancel_shape_gesture(self, context, settings):
+        from ..properties import set_shape_vertices
+        item = self._shape_target(settings)
+        mode = self.drag_mode
+        self.drag_mode = 'NONE'
+        self.shape_target_id = None
+        if item is not None and mode == 'SHAPE_DRAW':
+            index = next(i for i, other in enumerate(settings.images)
+                         if other.item_id == item.item_id)
+            settings.images.remove(index)
+            settings.active_image_index = -1
+        elif item is not None:
+            kind, vertices = self.shape_vertex_start
+            item.shape_kind = kind  # rebuilds a preset, then the exact vertices return
+            set_shape_vertices(item, vertices)
+        context.area.tag_redraw()
 
     def _resolve_drag_items(self, settings):
         """RNA collection elements can change slots when the UI list is reordered."""
@@ -755,6 +932,10 @@ class KanvasInteractionHelpers:
             settings.box_sel_end = (mouse_x, mouse_y)
             return
 
+        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+            self._update_shape_gesture(settings, mouse_x, mouse_y, shift, ctrl)
+            return
+
         if self.drag_mode == 'TEXT_RESIZE':
             self.last_mouse_pos = (mouse_x, mouse_y)
             location, start_scale, base_width, base_height, bounds = self.text_start
@@ -928,6 +1109,18 @@ class KanvasInteractionHelpers:
             self.drag_target.scale_xy[1] = max(0.001, self._constrain_value(
                 raw, self.init_scale[1], shift=shift, ctrl=ctrl))
 
+        elif self.drag_mode == 'SHAPE_W':
+            from ..utils.shape_geometry import MIN_SIZE
+            raw = abs(clx) * 2.0 / self.drag_target.scale_master
+            self.drag_target.shape_width = max(MIN_SIZE, self._constrain_value(
+                raw, self.init_shape_size[0], shift=shift, ctrl=ctrl, step=10.0))
+
+        elif self.drag_mode == 'SHAPE_H':
+            from ..utils.shape_geometry import MIN_SIZE
+            raw = abs(cly) * 2.0 / self.drag_target.scale_master
+            self.drag_target.shape_height = max(MIN_SIZE, self._constrain_value(
+                raw, self.init_shape_size[1], shift=shift, ctrl=ctrl, step=10.0))
+
         elif self.drag_mode == 'SHEAR_X':
             if abs(cly) > 10:
                 self.drag_target.shear_xy[0] = self._constrain_value(
@@ -979,6 +1172,10 @@ class KanvasInteractionHelpers:
         """Finaliza o drag e registra um passo de undo granular."""
         settings = get_settings(context)
         self._resolve_drag_items(settings)
+
+        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+            self._finish_shape_gesture(context, settings)
+            return
 
         if self.drag_mode == 'TEXT_RESIZE':
             self.drag_mode = 'NONE'
@@ -1083,11 +1280,14 @@ class KanvasInteractionHelpers:
             changed = _clear_image_selection(settings)
             changed = _clear_arrow_selection(settings) or changed
 
+        from ..utils.gpu import owning_group
         for idx, img in enumerate(settings.images):
             if (not img.show_in_editor or img.is_locked
-                    or img.item_type not in {'IMAGE', 'TEXT'}):
+                    or img.item_type not in {'IMAGE', 'TEXT', 'SHAPE'}):
                 continue
-            if img.item_type == 'TEXT':
+            if owning_group(settings, img) is not None:
+                continue  # members are picked through their group
+            if img.item_type in {'TEXT', 'SHAPE'}:
                 from ..utils.item_geometry import item_bounds
                 left, bottom, right, top = item_bounds(img)
                 intersects = (right >= min_x and left <= max_x
@@ -1103,6 +1303,16 @@ class KanvasInteractionHelpers:
         for idx, frame in enumerate(settings.images):
             if (frame.item_type != 'FRAME' or not frame.show_in_editor
                     or frame.is_locked):
+                continue
+            if frame.frame_is_group:
+                from ..utils.item_geometry import item_bounds
+                left, bottom, right, top = item_bounds(frame)
+                if right >= min_x and left <= max_x and top >= min_y and bottom <= max_y:
+                    frame.is_selected = True
+                    _set_canvas_active(settings, image_index=idx)
+                    changed = True
+                continue
+            if owning_group(settings, frame) is not None:
                 continue
             header_x = frame.location[0] + frame.frame_width / 2
             header_y = frame.location[1]
@@ -1133,6 +1343,10 @@ class KanvasInteractionHelpers:
         self._resolve_drag_items(settings)
         settings.show_box_sel = False
         settings.drop_target_frame = ''
+
+        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+            self._cancel_shape_gesture(context, settings)
+            return
 
         if self.drag_mode == 'TEXT_RESIZE':
             location, scale, width, height, _ = self.text_start
@@ -1208,6 +1422,8 @@ class KanvasInteractionHelpers:
 
         if self.drag_target:
             self.drag_target.shear_xy = list(self.init_shear)
+            if self.drag_target.item_type == 'SHAPE' and hasattr(self, 'init_shape_size'):
+                self.drag_target.shape_width, self.drag_target.shape_height = self.init_shape_size
             if hasattr(self, 'init_loc'):
                 self.drag_target.location = self.init_loc
 
@@ -1391,6 +1607,10 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
 
         if self.action == 'CANCEL_BOX':
             area_key = (context.window.as_pointer(), context.area.as_pointer())
+            if area_key in _shape_armed_areas:
+                _shape_armed_areas.pop(area_key)
+                context.workspace.status_text_set(None)
+                return {'CANCELLED'}
             if area_key in _box_armed_areas:
                 _box_armed_areas.discard(area_key)
                 return {'CANCELLED'}
@@ -1450,6 +1670,12 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             if self.action == 'FOCUS':
                 bpy.ops.kanvas.focus_selection()
                 return {'CANCELLED'}
+            if self.action in {'GROUP', 'UNGROUP'}:
+                if self.action == 'GROUP':
+                    bpy.ops.kanvas.group_items()
+                else:
+                    bpy.ops.kanvas.ungroup_items()
+                return {'CANCELLED'}
             if self.action == 'MASK':
                 if bpy.ops.kanvas.paint_image_mask.poll():
                     bpy.ops.kanvas.paint_image_mask('INVOKE_DEFAULT')
@@ -1470,6 +1696,7 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 selected = [item for item in settings.images
                             if item.is_selected and item.show_in_editor and not item.is_locked
                             and ((item.item_type == 'IMAGE' and item.image_data)
+                                 or item.item_type == 'SHAPE'
                                  or (self.action == 'MOVE' and item.item_type == 'TEXT'))]
                 if self.action == 'MOVE' and img and img.item_type == 'FRAME' and img.is_selected:
                     self.keyboard_transform = True
@@ -1508,13 +1735,14 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     bpy.ops.kanvas.remove_arrow()
                     return {'CANCELLED'}
             elif self.action == 'DUPLICATE':
-                if img is None:
+                if img is None or (img.item_type == 'FRAME' and not img.frame_is_group):
                     selected = [i for i in settings.images
-                                if i.is_selected and not i.is_locked and i.item_type != 'FRAME']
+                                if i.is_selected and not i.is_locked
+                                and (i.item_type != 'FRAME' or i.frame_is_group)]
                     if selected:
                         img = selected[0]
                         settings.active_image_index = [i for i in settings.images].index(img)
-                if not img or img.item_type == 'FRAME':
+                if not img or (img.item_type == 'FRAME' and not img.frame_is_group):
                     return {'PASS_THROUGH'}
 
                 # Run the same duplication logic inside this gesture so
@@ -1524,9 +1752,8 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     return {'CANCELLED'}
                 idx = settings.active_image_index
                 if 0 <= idx < len(settings.images):
+                    # Every copy stays selected, so the whole set moves together.
                     dup_item = settings.images[idx]
-                    for item in settings.images:
-                        item.is_selected = (item == dup_item)
                     self.keyboard_transform = True
                     self.start_drag(context, dup_item, 'MOVE', mouse)
                     return self._begin_gesture(context)
@@ -1563,10 +1790,20 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             self._start_box_selection(context, event, *mouse, native=True)
             return self._begin_gesture(context)
 
+        shape_kind = _shape_armed_areas.pop(area_key, None)
+        if shape_kind:
+            context.workspace.status_text_set(None)
+            self._start_shape_draw(context, settings, shape_kind, mouse)
+            return self._begin_gesture(context)
+
         from ..utils.arrow_geometry import hit_arrow
         view = context.region.view2d
         pixel_size = abs(view.region_to_view(1, 0)[0]
                          - view.region_to_view(0, 0)[0])
+        vertex_result = self._start_shape_vertex_gesture(
+            context, event, settings, mouse, pixel_size)
+        if vertex_result is not None:
+            return vertex_result
         arrow_index, arrow_part = hit_arrow(settings, mouse, pixel_size)
         if arrow_index is not None:
             arrow = settings.arrows[arrow_index]
@@ -1593,6 +1830,10 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             return {'CANCELLED'}
 
         frame_idx, frame, frame_part = self._frame_hit(context, mouse)
+        if frame is not None and not event.ctrl:
+            group_idx, group = self._owning_group(settings, frame)
+            if group is not None:
+                frame_idx, frame, frame_part = group_idx, group, 'MOVE'
         idx, img = self._find_image_at_pos(context, mouse)
         if img and img.item_type == 'TEXT' and img.text_compare \
                 and not (event.shift or event.ctrl or event.alt):
@@ -1663,6 +1904,10 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                         ('SCALE_X' if not modifier else 'SHEAR_Y') if gizmo_idx in {5, 7} else
                         ('SCALE_Y' if not modifier else 'SHEAR_X') if gizmo_idx in {4, 6} else
                         'ROTATE')
+                if active.item_type == 'SHAPE':
+                    # Edge handles change the box size; a shape has no shear.
+                    mode = {'SCALE_X': 'SHAPE_W', 'SHEAR_Y': 'SHAPE_W',
+                            'SCALE_Y': 'SHAPE_H', 'SHEAR_X': 'SHAPE_H'}.get(mode, mode)
                 self.start_drag(context, active, mode, mouse)
                 return self._begin_gesture(context)
 
@@ -1708,6 +1953,11 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     img.text_lines[task_index].done = not img.text_lines[task_index].done
                     context.area.tag_redraw()
                     return {'FINISHED'}
+            # Clicking a member picks its whole group; Ctrl+click picks the item alone.
+            if not event.ctrl:
+                group_idx, group = self._owning_group(settings, img)
+                if group is not None and not group.is_locked:
+                    img, idx = group, group_idx
             if event.shift:
                 img.is_selected = not img.is_selected
                 if img.is_selected:
@@ -1798,7 +2048,7 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
         _sync_modifiers(settings, event)
         if event.type in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT',
                           'LEFT_CTRL', 'RIGHT_CTRL'}:
-            if self.drag_mode in {'ROTATE', 'TEXT_RESIZE'}:
+            if self.drag_mode in {'ROTATE', 'TEXT_RESIZE', 'SHAPE_DRAW', 'SHAPE_VERTEX'}:
                 self._update_drag(context, *self.last_mouse_pos,
                                   shift=settings.shift_is_held, ctrl=settings.ctrl_is_held)
             context.area.tag_redraw()

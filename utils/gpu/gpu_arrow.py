@@ -253,8 +253,8 @@ def _draw_arrow_body(shader, smooth_shader, points, arrow, length,
 
 
 def draw_arrows(settings, pixel_size):
-    from ..arrow_geometry import (curve_midpoint, curve_points,
-                                  image_anchor_points)
+    from ..arrow_geometry import (attachable_anchor_points, curve_midpoint,
+                                  curve_points)
     from .gpu_common import get_prefs
 
     prefs = get_prefs()
@@ -293,18 +293,18 @@ def draw_arrows(settings, pixel_size):
         if settings.arrow_dragging:
             if settings.arrow_quick_active:
                 for item in settings.images:
-                    if item.item_type != 'IMAGE' or not item.show_in_editor or not item.image_data:
+                    if item.item_type not in {'IMAGE', 'SHAPE'} or not item.show_in_editor:
                         continue
-                    for _, point in image_anchor_points(item):
+                    for _, point in attachable_anchor_points(item):
                         _triangles(shader, _square(point, 2.5 * pixel_size),
                                    (0.1, 0.55, 1.0, 0.9))
             elif settings.arrow_hover_valid and settings.arrow_hover_item_id:
                 hovered = next((item for item in settings.images
                                 if item.item_id == settings.arrow_hover_item_id
-                                and item.item_type == 'IMAGE'
+                                and item.item_type in {'IMAGE', 'SHAPE'}
                                 and item.show_in_editor), None)
                 if hovered:
-                    for _, point in image_anchor_points(hovered):
+                    for _, point in attachable_anchor_points(hovered):
                         _triangles(shader, _square(point, 2.5 * pixel_size),
                                    (0.1, 0.55, 1.0, 0.9))
             if settings.arrow_hover_valid:

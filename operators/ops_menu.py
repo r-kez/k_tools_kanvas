@@ -40,6 +40,7 @@ def draw_kanvas_add_entries(layout):
     layout.operator("kanvas.create_text", icon='TEXT', text="Text Card").checklist = False
     layout.operator("kanvas.create_text", icon='CHECKBOX_HLT', text="Checklist").checklist = True
     layout.operator("kanvas.create_text", icon='UV_SYNC_SELECT', text="Compare A/B").compare = True
+    layout.menu("KANVAS_MT_add_shape", text="Shape", icon='MESH_PLANE')
     layout.operator("kanvas.create_arrow", icon='TRIA_RIGHT', text="Arrow")
     layout.operator("kanvas.create_frame", icon='FULLSCREEN_ENTER', text="Frame")
 
@@ -50,6 +51,16 @@ def draw_kanvas_add_menu(self, context):
         return
     self.layout.separator()
     draw_kanvas_add_entries(self.layout)
+
+
+class KANVAS_MT_AddShapeMenu(bpy.types.Menu):
+    bl_idname = "KANVAS_MT_add_shape"
+    bl_label = "Shape"
+    bl_description = 'Draw a rectangle, triangle, diamond, ellipse or other shape on the canvas'
+
+    def draw(self, context):
+        from .ops_shape import draw_shape_menu_entries
+        draw_shape_menu_entries(self.layout)
 
 
 class KANVAS_MT_AddContentMenu(bpy.types.Menu):
@@ -78,6 +89,7 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
     bl_description = 'Actions for the current Kanvas selection'
 
     def draw(self, context):
+        from ..utils.gpu import owning_group
         layout   = self.layout
         settings = get_settings(context)
 
@@ -88,7 +100,7 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
         n_sel    = len(selected)
 
         if n_sel > 0:
-            content = [item for item in selected if item.item_type in {'IMAGE', 'TEXT'}]
+            content = [item for item in selected if item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
             attached = [item for item in selected if item.parent_frame]
             frame_name = (active.frame_node_name if active and active.item_type == 'FRAME'
                           else active.parent_frame if active else '')
@@ -103,6 +115,13 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
                        for item in settings.images):
                     layout.operator("kanvas.attach_to_frame", icon='LINKED',
                                     text="Attach Selection to Frame...")
+            layout.separator()
+            layout.label(text="Group", icon='GROUP')
+            layout.operator("kanvas.group_items", icon='GROUP', text="Group (Ctrl+G)")
+            if any(item.frame_is_group or owning_group(settings, item) is not None
+                   for item in selected):
+                layout.operator("kanvas.ungroup_items", icon='UNLINKED',
+                                text="Ungroup (Ctrl+Shift+G)")
             if attached:
                 layout.operator("kanvas.detach_from_frame", icon='UNLINKED',
                                 text=f"Release from Frame ({len(attached)})" if len(attached) > 1

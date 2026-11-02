@@ -28,7 +28,7 @@ The full documentation is in the [`docs`](docs/index.md) folder:
 - [Getting started](docs/getting-started.md)
 - [Interface and navigation](docs/interface.md)
 - [Images](docs/images.md), [Selecting and transforming](docs/transforms.md), [Arranging items](docs/arranging.md)
-- [Frames](docs/frames.md), [Text cards and checklists](docs/text-cards.md), [Arrows](docs/arrows.md)
+- [Frames](docs/frames.md), [Groups](docs/groups.md), [Text cards and checklists](docs/text-cards.md), [Arrows](docs/arrows.md), [Shapes](docs/shapes.md)
 - [Image masks](docs/masks.md), [Color Markup](docs/color-markup.md), [Auto Select](docs/auto-select.md)
 - [Preferences](docs/preferences.md), [Keyboard and mouse reference](docs/shortcuts.md)
 - [Performance and memory](docs/performance.md), [Troubleshooting](docs/troubleshooting.md)

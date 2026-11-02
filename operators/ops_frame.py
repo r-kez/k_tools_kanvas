@@ -42,11 +42,11 @@ class KANVAS_OT_DetachFromFrame(bpy.types.Operator):
         settings = get_settings(context)
         tree = kanvas_tree(context)
         targets = [item for item in settings.images
-                   if item.item_type in {'IMAGE', 'TEXT', 'FRAME'} and item.is_selected
+                   if item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} and item.is_selected
                    and not item.is_locked and item.parent_frame]
         if not targets and 0 <= settings.active_image_index < len(settings.images):
             item = settings.images[settings.active_image_index]
-            if (item.item_type in {'IMAGE', 'TEXT', 'FRAME'} and item.parent_frame
+            if (item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} and item.parent_frame
                     and not item.is_locked):
                 targets = [item]
         if not targets:
@@ -87,7 +87,7 @@ class KANVAS_OT_AttachToFrame(bpy.types.Operator):
             return False
         items = get_settings(context).images
         return any(item.is_selected and not item.is_locked
-                   and item.item_type in {'IMAGE', 'TEXT', 'FRAME'}
+                   and item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'}
                    and any(frame.item_type == 'FRAME' and frame.show_in_editor
                            and not frame.is_locked
                            and frame.frame_node_name != item.frame_node_name for frame in items)
@@ -106,7 +106,7 @@ class KANVAS_OT_AttachToFrame(bpy.types.Operator):
         frame_name = self.frame_name or self.target
         targets = [item for item in settings.images
                    if item.is_selected and not item.is_locked
-                   and item.item_type in {'IMAGE', 'TEXT', 'FRAME'}
+                   and item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'}
                    and not (item.item_type == 'FRAME' and item.frame_node_name == frame_name)]
         target_frame = get_frame(settings, frame_name)
         if not targets or not target_frame or target_frame.is_locked:
@@ -176,7 +176,7 @@ class KANVAS_OT_CreateFrame(bpy.types.Operator):
         settings = get_settings(context)
         tree = kanvas_tree(context)
         targets = [item for item in settings.images
-                   if item.is_selected and (item.item_type in {'TEXT', 'FRAME'}
+                   if item.is_selected and (item.item_type in {'TEXT', 'SHAPE', 'FRAME'}
                                             or (item.item_type == 'IMAGE' and item.image_data))]
         targets = _selection_roots(settings, targets)
         frame_label = unique_item_name(settings, self.label)

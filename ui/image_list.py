@@ -48,6 +48,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         is_frame = (getattr(item, "item_type", 'IMAGE') == 'FRAME')
         is_text = (getattr(item, "item_type", 'IMAGE') == 'TEXT')
+        is_shape = (getattr(item, "item_type", 'IMAGE') == 'SHAPE')
         is_compare = is_text and item.text_compare
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             from ..utils.gpu import get_frame, frame_ancestors, frame_descendants
@@ -85,6 +86,8 @@ class KANVAS_UL_image_list(bpy.types.UIList):
             kind.ui_units_x = 1.0
             kind.label(text="", icon='FULLSCREEN_ENTER' if is_frame else
                        'UV_SYNC_SELECT' if is_compare else
+                       'GROUP' if (is_frame and item.frame_is_group) else
+                       'MESH_PLANE' if is_shape else
                        'TEXT' if is_text else 'IMAGE_DATA')
 
             name = main.row(align=True)
@@ -108,6 +111,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
                             emboss=False)
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
-            icon_type = 'FULLSCREEN_ENTER' if is_frame else ('TEXT' if is_text else 'IMAGE_DATA')
+            icon_type = ('FULLSCREEN_ENTER' if is_frame else 'MESH_PLANE' if is_shape
+                         else 'TEXT' if is_text else 'IMAGE_DATA')
             layout.label(text="", icon=icon_type)
 

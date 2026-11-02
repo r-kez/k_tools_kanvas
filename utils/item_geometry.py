@@ -17,6 +17,20 @@ def text_card_draw_indices(settings):
     return indices
 
 
+def shape_draw_indices(settings):
+    """Return visible shapes in paint order, with a single active selection on top."""
+    indices = sorted(
+        (index for index, item in enumerate(settings.images)
+         if item.item_type == 'SHAPE' and item.show_in_editor),
+        key=lambda index: (settings.images[index].z_index, index),
+    )
+    active = settings.active_image_index
+    if active in indices and settings.images[active].is_selected:
+        indices.remove(active)
+        indices.append(active)
+    return indices
+
+
 def image_draw_indices(settings):
     """Return images in paint order, lifting only a single active selection."""
     indices = sorted(
@@ -39,6 +53,9 @@ def item_bounds(item):
         half_w = item.text_width * item.text_scale * 0.5
         half_h = item.text_height * item.text_scale * 0.5
         return x - half_w, y - half_h, x + half_w, y + half_h
+    if kind == 'SHAPE':
+        from .shape_geometry import bounds
+        return bounds(item)
     if kind == 'FRAME':
         x, y = item.location
         return x, y - item.frame_height, x + item.frame_width, y

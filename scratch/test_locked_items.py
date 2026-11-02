@@ -58,6 +58,8 @@ try:
         settings.active_image_index = 0
         assert not image.is_selected
         assert bpy.ops.kanvas.remove_image(index=0) == {'CANCELLED'}
+        # A locked item is never copied; with nothing unlocked selected there is nothing to copy.
+        card.is_selected = False
         assert bpy.ops.kanvas.duplicate_image() == {'CANCELLED'}
         settings.active_arrow_index = 0
         assert bpy.ops.kanvas.remove_arrow() == {'CANCELLED'}

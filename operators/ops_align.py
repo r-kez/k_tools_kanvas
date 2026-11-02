@@ -116,13 +116,13 @@ class KANVAS_OT_AlignItems(KanvasTreeOnly, bpy.types.Operator):
         settings = get_settings(context)
         return sum(1 for item in settings.images
                    if item.is_selected and item.show_in_editor and not item.is_locked
-                   and item.item_type in {'IMAGE', 'TEXT'}
+                   and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}
                    and item_bounds(item) is not None) >= 2
 
     def execute(self, context):
         items = [item for item in get_settings(context).images
                  if item.is_selected and item.show_in_editor and not item.is_locked
-                 and item.item_type in {'IMAGE', 'TEXT'}]
+                 and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
         before = [tuple(item.location) for item in items]
         if align_items(items, self.mode) < 2:
             return {'CANCELLED'}
@@ -163,13 +163,13 @@ class KANVAS_OT_DistributeItems(KanvasTreeOnly, bpy.types.Operator):
         settings = get_settings(context)
         return sum(1 for item in settings.images
                    if item.is_selected and item.show_in_editor and not item.is_locked
-                   and item.item_type in {'IMAGE', 'TEXT'}
+                   and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}
                    and item_bounds(item) is not None) >= 3
 
     def execute(self, context):
         items = [item for item in get_settings(context).images
                  if item.is_selected and item.show_in_editor and not item.is_locked
-                 and item.item_type in {'IMAGE', 'TEXT'}]
+                 and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
         before = [tuple(item.location) for item in items]
         moved, reason = distribute_items(items, self.axis)
         if reason:

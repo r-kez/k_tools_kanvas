@@ -50,7 +50,7 @@ def update_kanvas_item_name(self, context):
     if getattr(self, "item_type", 'IMAGE') == 'IMAGE':
         if self.image_data and self.name == "Image":
             self.name = self.image_data.name
-    elif getattr(self, "item_type", 'IMAGE') == 'TEXT' and getattr(context, 'area', None):
+    elif getattr(self, "item_type", 'IMAGE') in {'TEXT', 'SHAPE'} and getattr(context, 'area', None):
         context.area.tag_redraw()
 
 def update_show_in_editor(self, context):
@@ -94,7 +94,7 @@ def update_frame_geometry(self, context):
         self.released_parent_frame = ''
     if _frame_geometry_updates_suspended:
         return
-    if getattr(self, "item_type", 'IMAGE') in {'IMAGE', 'TEXT', 'FRAME'} and self.parent_frame:
+    if getattr(self, "item_type", 'IMAGE') in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} and self.parent_frame:
         from .utils.gpu import update_frame_bounds
         update_frame_bounds(None, _settings_for_item(self, context), self.parent_frame)
     update_kanvas_item_name(self, context)
@@ -207,6 +207,52 @@ class KanvasTextLine(bpy.types.PropertyGroup):  # type: ignore
         name='Task Color', description='Shared paint color for this checklist task',
         subtype='COLOR', size=3, default=(0.95, 0.34, 0.18),
         min=0.0, max=1.0, update=update_checklist_line_color,
+    )
+
+
+def set_shape_vertices(item, vertices):
+    """Replace a shape's vertices with unit-box positions (-0.5..0.5)."""
+    collection = item.shape_vertices
+    collection.clear()
+    for x, y in vertices:
+        collection.add().co = (x, y)
+
+
+def update_shape_kind(self, context):
+    """Changing the kind rebuilds the vertices; Polygon keeps the current ones."""
+    if getattr(self, 'item_type', '') != 'SHAPE':
+        return
+    from .utils.shape_geometry import preset_vertices
+    vertices = preset_vertices(self.shape_kind)
+    if vertices is not None:
+        set_shape_vertices(self, vertices)
+        self.shape_edit_vertices = self.shape_edit_vertices and self.shape_kind != 'ELLIPSE'
+    update_frame_geometry(self, context)
+
+
+def update_shape_appearance(self, context):
+    if getattr(context, 'area', None):
+        context.area.tag_redraw()
+
+
+def update_shape_fill(self, context):
+    """A shape with neither fill nor outline would be invisible: keep the outline."""
+    if not self.shape_show_fill and not self.shape_show_outline:
+        self.shape_show_outline = True
+    update_shape_appearance(self, context)
+
+
+def update_shape_outline(self, context):
+    if not self.shape_show_outline and not self.shape_show_fill:
+        self.shape_show_outline = True
+    update_shape_appearance(self, context)
+
+
+class KanvasShapeVertex(bpy.types.PropertyGroup):
+    co: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Vertex',
+        description='Vertex position inside the shape box, from -0.5 to 0.5 on each axis',
+        size=2,
     )
 
 
@@ -330,6 +376,7 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
             ('IMAGE', 'Image', 'Image Item'),
             ('FRAME', 'Frame', 'Frame Container Item'),
             ('TEXT', 'Text', 'Multiline text card'),
+            ('SHAPE', 'Shape', 'Rectangle, triangle, diamond or free polygon'),
         ],
         default='IMAGE',
     )
@@ -371,6 +418,13 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         default=0.3,
         min=0.0,
         max=1.0,
+    )
+
+    frame_is_group: bpy.props.BoolProperty(  # type: ignore
+        name='Group',
+        description=('This frame item is a group: it keeps its members together without '
+                     'drawing a frame. Groups do not nest'),
+        default=False,
     )
 
     list_collapsed: bpy.props.BoolProperty(  # type: ignore
@@ -528,6 +582,84 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         min=0.0,
         max=1.0,
         update=update_text_appearance,
+    )
+
+    shape_kind: bpy.props.EnumProperty(  # type: ignore
+        name='Shape',
+        description='Kind of shape. Changing it rebuilds the vertices inside the same box',
+        items=[
+            ('RECTANGLE', 'Rectangle', 'Four straight sides', 'MESH_PLANE', 0),
+            ('TRIANGLE', 'Triangle', 'Three straight sides', 'MESH_CONE', 1),
+            ('DIAMOND', 'Diamond', 'Four corners on the middle of each side', 'MESH_CUBE', 2),
+            ('ELLIPSE', 'Ellipse', 'Round shape that fills its box', 'MESH_CIRCLE', 3),
+            ('PENTAGON', 'Pentagon', 'Five equal sides', 'MESH_ICOSPHERE', 4),
+            ('HEXAGON', 'Hexagon', 'Six equal sides', 'MESH_ICOSPHERE', 5),
+            ('STAR', 'Star', 'Five pointed star', 'SOLO_OFF', 6),
+            ('POLYGON', 'Polygon', 'Free vertices; edit them with Edit Vertices', 'EDITMODE_HLT', 7),
+        ],
+        default='RECTANGLE',
+        update=update_shape_kind,
+    )
+    shape_width: bpy.props.FloatProperty(  # type: ignore
+        name='Width',
+        description='Width of the shape box before the overall scale',
+        default=160.0, min=4.0,
+        update=update_frame_geometry,
+    )
+    shape_height: bpy.props.FloatProperty(  # type: ignore
+        name='Height',
+        description='Height of the shape box before the overall scale',
+        default=120.0, min=4.0,
+        update=update_frame_geometry,
+    )
+    shape_vertices: bpy.props.CollectionProperty(type=KanvasShapeVertex)  # type: ignore
+    shape_edit_vertices: bpy.props.BoolProperty(  # type: ignore
+        name='Edit Vertices',
+        description=('Show the vertices of this shape. Drag a vertex to move it, drag an edge '
+                     'to add a vertex, Ctrl+click a vertex to delete it'),
+        default=False, options={'SKIP_SAVE'},
+        update=update_shape_appearance,
+    )
+    shape_show_fill: bpy.props.BoolProperty(  # type: ignore
+        name='Fill', description='Fill the inside of the shape. Without a fill, only the outline picks the shape (the outline stays on)',
+        default=True, update=update_shape_fill,
+    )
+    shape_fill_color: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Fill Color', description='Color inside the shape',
+        subtype='COLOR', size=3, default=(0.95, 0.62, 0.15), min=0.0, max=1.0,
+        update=update_shape_appearance,
+    )
+    shape_fill_opacity: bpy.props.FloatProperty(  # type: ignore
+        name='Fill Opacity', description='Opacity of the fill',
+        default=0.25, min=0.0, max=1.0, subtype='FACTOR',
+        update=update_shape_appearance,
+    )
+    shape_show_outline: bpy.props.BoolProperty(  # type: ignore
+        name='Outline', description='Draw a line around the shape. It stays on while the fill is off, so the shape never disappears',
+        default=True, update=update_shape_outline,
+    )
+    shape_line_color: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Line Color', description='Color of the outline',
+        subtype='COLOR', size=3, default=(0.95, 0.62, 0.15), min=0.0, max=1.0,
+        update=update_shape_appearance,
+    )
+    shape_line_width: bpy.props.FloatProperty(  # type: ignore
+        name='Line Width', description='Width of the outline on the canvas',
+        default=3.0, min=1.0, max=40.0, update=update_shape_appearance,
+    )
+    shape_line_style: bpy.props.EnumProperty(  # type: ignore
+        name='Line',
+        description='How the outline is drawn',
+        items=(
+            ('SOLID', 'Solid', 'Continuous line'),
+            ('DASHED', 'Dashed', 'Line made of dashes'),
+            ('DOTTED', 'Dotted', 'Line made of dots'),
+        ),
+        default='SOLID', update=update_shape_appearance,
+    )
+    shape_show_text: bpy.props.BoolProperty(  # type: ignore
+        name='Text', description='Show the text of this shape, centered inside it',
+        default=True, update=update_shape_appearance,
     )
 
     auto_resize: bpy.props.BoolProperty(  # type: ignore

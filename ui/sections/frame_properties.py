@@ -23,3 +23,12 @@ def draw_frame_properties(layout, settings, item):
 
     child_count = sum(1 for img in settings.images if img.parent_frame == item.frame_node_name)
     box.label(text=f"Contains {child_count} item(s)", icon='INFO')
+
+
+def draw_group_properties(layout, settings, item):
+    box = layout.box()
+    box.label(text=f"Group: {item.name}", icon='GROUP')
+    box.prop(item, "name", text="Name")
+    count = sum(1 for other in settings.images if other.parent_frame == item.frame_node_name)
+    box.label(text=f"Holds {count} item(s). Ctrl+click an item to pick it alone")
+    box.operator("kanvas.ungroup_items", text="Ungroup", icon='UNLINKED')

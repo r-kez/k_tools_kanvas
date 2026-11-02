@@ -686,6 +686,17 @@ class KANVAS_OT_RemoveImage(KanvasTreeOnly, bpy.types.Operator):
         if not indices_to_remove and not arrow_indices:
             return {'CANCELLED'}
 
+        # Deleting a group deletes what it holds; a frame, by contrast, only lets go.
+        from ..utils.gpu import frame_descendants, is_group
+        member_ids = set()
+        for idx in indices_to_remove:
+            if is_group(settings.images[idx]):
+                member_ids.update(child.item_id for child in frame_descendants(
+                    settings, settings.images[idx].frame_node_name) if not child.is_locked)
+        if member_ids:
+            indices_to_remove = sorted(set(indices_to_remove) | {
+                i for i, item in enumerate(settings.images) if item.item_id in member_ids})
+
         indices_to_remove.sort(reverse=True)
 
         space_data = getattr(context, 'space_data', None)
@@ -777,23 +788,76 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
 
     def execute(self, context):
         settings = get_settings(context)
-        if not (0 <= settings.active_image_index < len(settings.images)):
-            selected = [idx for idx, i in enumerate(settings.images)
-                        if i.is_selected and not i.is_locked and i.item_type != 'FRAME']
-            if selected:
-                settings.active_image_index = selected[0]
-            else:
-                return {'CANCELLED'}
-
-        source  = settings.images[settings.active_image_index]
-        source_idx = settings.active_image_index
-        if source.item_type == 'FRAME' or source.is_locked:
+        # Every selected, unlocked item is copied. Frames are not duplicated.
+        from ..utils.gpu import frame_descendants, is_group
+        sources = [item.item_id for item in settings.images
+                   if item.is_selected and not item.is_locked and item.item_type != 'FRAME']
+        # A selected group is copied with its members, and the copies form a new group.
+        selected_groups = [item for item in settings.images
+                           if is_group(item) and item.is_selected and not item.is_locked]
+        group_members = {}
+        for group in selected_groups:
+            members = [child.item_id for child in frame_descendants(settings, group.frame_node_name)
+                       if child.item_type != 'FRAME' and not child.is_locked]
+            group_members[group.item_id] = members
+            sources.extend(member for member in members if member not in sources)
+        if not sources:
+            index = settings.active_image_index
+            if (0 <= index < len(settings.images) and not settings.images[index].is_locked
+                    and settings.images[index].item_type != 'FRAME'):
+                sources = [settings.images[index].item_id]
+        if not sources:
             return {'CANCELLED'}
+
+        copies = {source_id: KANVAS_OT_DuplicateImage._duplicate(self, context, settings, source_id)
+                  for source_id in sources}
+        new_ids = [new_id for new_id in copies.values() if new_id]
+        if not new_ids:
+            return {'CANCELLED'}
+
+        selected_ids = list(new_ids)
+        if group_members:
+            from .ops_group import group_selection
+            for group_id, members in group_members.items():
+                source_group = next((i for i in settings.images if i.item_id == group_id), None)
+                copied = [copies[m] for m in members if copies.get(m)]
+                for item in settings.images:
+                    if item.item_id in copied:
+                        item.parent_frame = source_group.parent_frame if source_group else ''
+                    item.is_selected = item.item_id in copied
+                new_group = group_selection(context, settings)
+                if new_group:
+                    selected_ids = [i for i in selected_ids if i not in copied] + [new_group]
+
+        from ..properties import suspend_selection_updates
+        with suspend_selection_updates():
+            for item in settings.images:
+                item.is_selected = item.item_id in selected_ids
+            settings.active_image_index = next(
+                (i for i in range(len(settings.images) - 1, -1, -1)
+                 if settings.images[i].item_id == selected_ids[-1]), -1)
+
+        if getattr(context, 'area', None):
+            context.area.tag_redraw()
+
+        self.report({'INFO'}, f"Duplicated {len(new_ids)} item(s)")
+        return {'FINISHED'}
+
+    def _duplicate(self, context, settings, source_id):
+        """Copy one item next to its source and return the new item's ID."""
+        source_idx = next((i for i, item in enumerate(settings.images)
+                           if item.item_id == source_id), -1)
+        if source_idx < 0:
+            return ''
+        source = settings.images[source_idx]
 
         copy_name = unique_item_name(settings, f"{source.name}_copy")
 
         new_img = settings.images.add()
         new_img.item_id = uuid.uuid4().hex
+        new_id = new_img.item_id
+        # Adding to the collection can move its memory: read the source again.
+        source = next(item for item in settings.images if item.item_id == source_id)
 
         new_img.item_type = source.item_type
         new_img.name         = copy_name
@@ -892,6 +956,21 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
                 copied.show_color_links = line.show_color_links
                 copied.color = tuple(line.color)
 
+        if source.item_type == 'SHAPE':
+            new_img.shape_kind = source.shape_kind
+            from ..properties import set_shape_vertices
+            set_shape_vertices(new_img, [tuple(vertex.co) for vertex in source.shape_vertices])
+            for name in ('shape_width', 'shape_height', 'shape_show_fill', 'shape_fill_opacity',
+                         'shape_show_outline', 'shape_line_width', 'shape_line_style',
+                         'shape_show_text', 'text_font_size', 'opacity'):
+                setattr(new_img, name, getattr(source, name))
+            for name in ('shape_fill_color', 'shape_line_color', 'text_color'):
+                setattr(new_img, name, tuple(getattr(source, name)))
+            for line in source.text_lines:
+                copied = new_img.text_lines.add()
+                copied.line_id = uuid.uuid4().hex
+                copied.value = line.value
+
         max_z            = max([img.z_index for img in settings.images] + [-1])
         new_img.z_index  = max_z + 1
 
@@ -907,17 +986,7 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
             if current_idx != target_idx:
                 settings.images.move(current_idx, target_idx)
 
-        dup_idx = next((i for i, item in enumerate(settings.images) if item.name == copy_name), -1)
-        if dup_idx != -1:
-            settings.active_image_index = dup_idx
-            for idx, item in enumerate(settings.images):
-                item.is_selected = (idx == dup_idx)
-
-        if getattr(context, 'area', None):
-            context.area.tag_redraw()
-
-        self.report({'INFO'}, f"Duplicated {source.name}")
-        return {'FINISHED'}
+        return new_id
 
 class KANVAS_OT_RefreshImage(KanvasTreeOnly, bpy.types.Operator):
     bl_idname  = "kanvas.refresh_image"

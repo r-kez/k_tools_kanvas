@@ -50,7 +50,9 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 
 | Shortcut | Action |
 | --- | --- |
-| `Shift + D` | Duplicate and move the copy |
+| `Shift + D` | Duplicate every selected item and move the copies |
+| `Ctrl + G` | Group the selected items (see [Groups](groups.md)) |
+| `Ctrl + Shift + G` | Ungroup |
 | `F2` | Rename the active item |
 | `X` or `Delete` | Remove the selection |
 | `Ctrl + V` | Paste images |

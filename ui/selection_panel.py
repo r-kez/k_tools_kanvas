@@ -5,6 +5,7 @@ from .main_panel import KANVAS_PT_MainPanel
 from .sections.selection import draw_selection_actions
 from .sections.frame_properties import draw_frame_properties
 from .sections.text_properties import draw_text_properties
+from .sections.shape_properties import draw_shape_properties
 from .sections.image_properties import draw_image_properties
 
 
@@ -37,9 +38,14 @@ class KANVAS_PT_SelectionPanel(bpy.types.Panel):
             return
         draw_selection_actions(self.layout, settings)
         item = settings.images[active_index]
-        if item.item_type == 'FRAME':
+        if item.item_type == 'FRAME' and item.frame_is_group:
+            from .sections.frame_properties import draw_group_properties
+            draw_group_properties(self.layout, settings, item)
+        elif item.item_type == 'FRAME':
             draw_frame_properties(self.layout, settings, item)
         elif item.item_type == 'TEXT':
             draw_text_properties(self.layout, settings, item)
+        elif item.item_type == 'SHAPE':
+            draw_shape_properties(self.layout, settings, item)
         else:
             draw_image_properties(self.layout, settings, item)

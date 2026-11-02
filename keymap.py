@@ -21,6 +21,8 @@ UI_ACTIONS = (
     ('Reset Rotation', 'RESET_ROTATE'),
     ('Reset Scale', 'RESET_SCALE'),
     ('Duplicate', 'DUPLICATE'),
+    ('Group', 'GROUP'),
+    ('Ungroup', 'UNGROUP'),
     ('Delete', 'DELETE'),
     ('Box Select', 'BOX'),
     ('Select Visible', 'SELECT_ALL'),
@@ -143,6 +145,8 @@ def rebuild():
     bind('DELETE', 'X')
     bind('DELETE', 'DEL')
     bind('DUPLICATE', 'D', shift=True)
+    bind('GROUP', 'G', ctrl=True)
+    bind('UNGROUP', 'G', ctrl=True, shift=True)
     bind('DETACH', 'U', alt=True)
     bind('RESET_MOVE', 'G', alt=True)
     bind('RESET_SCALE', 'S', alt=True)

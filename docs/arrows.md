@@ -19,6 +19,16 @@ There are two ways.
 
 Place an endpoint on an image or a text card to **attach** it. Images offer anchors at their corners and edge centers, and also at points inside the image. Cards offer anchors on their edges.
 
+## Attaching to shapes
+
+An arrow end attaches to a [shape](shapes.md) in three ways, so you can build diagrams:
+
+- **Corners and sides:** near a corner of the shape, or the middle of a side, the end snaps to it. An ellipse offers eight points, one every 45 degrees. The snap points are shown while you place or drag an end.
+- **The outline:** close to the edge, the end attaches to the nearest point of the outline.
+- **Inside:** anywhere inside the shape, the end attaches exactly where you release it.
+
+The end follows the shape when it moves, turns, scales, or is resized. When you edit a shape's vertices, attached ends stay where they were. Deleting a shape leaves the arrow where it was.
+
 ## Editing an arrow
 
 Click an arrow to select it. You can then:

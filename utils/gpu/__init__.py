@@ -25,6 +25,35 @@ def get_frame(settings, frame_name):
                  if item.item_type == 'FRAME' and item.frame_node_name == frame_name), None)
 
 
+def is_group(item):
+    return item.item_type == 'FRAME' and item.frame_is_group
+
+
+def owning_group(settings, item):
+    """The group that holds this item directly or through frames, or None."""
+    name, seen = item.parent_frame, set()
+    while name and name not in seen:
+        seen.add(name)
+        parent = get_frame(settings, name)
+        if parent is None:
+            return None
+        if parent.frame_is_group:
+            return parent
+        name = parent.parent_frame
+    return None
+
+
+def prune_empty_groups(settings):
+    """A group without members has no reason to exist."""
+    used = {item.parent_frame for item in settings.images if item.parent_frame}
+    for index in range(len(settings.images) - 1, -1, -1):
+        item = settings.images[index]
+        if is_group(item) and item.frame_node_name not in used:
+            if settings.active_image_index == index:
+                settings.active_image_index = -1
+            settings.images.remove(index)
+
+
 def ensure_item_ids(settings):
     """Backfill old files and repair IDs copied by Blender's duplicate operation."""
     seen = set()
@@ -101,12 +130,14 @@ def frame_has_content(settings, frame_name):
 
 
 def can_attach_to_frame(settings, item, frame_name):
-    if item.item_type not in {'IMAGE', 'TEXT', 'FRAME'} or not get_frame(settings, frame_name):
+    if item.item_type not in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} or not get_frame(settings, frame_name):
         return False
     if item.item_type == 'FRAME':
         if item.frame_node_name == frame_name:
             return False
         target = get_frame(settings, frame_name)
+        if item.frame_is_group and (target.frame_is_group or owning_group(settings, target)):
+            return False
         if any(parent.frame_node_name == item.frame_node_name
                for parent in frame_ancestors(settings, target)):
             return False
@@ -178,6 +209,7 @@ def sync_kanvas_frames(tree, settings):
         tree.nodes.remove(node)
 
     ensure_item_ids(settings)
+    prune_empty_groups(settings)
     frame_names = {item.frame_node_name for item in settings.images if item.item_type == 'FRAME'}
     for item in settings.images:
         if item.parent_frame and item.parent_frame not in frame_names:
@@ -274,6 +306,7 @@ FRAME_PADDING_TOP = 24.0
 FRAME_PADDING_SIDE = 24.0
 FRAME_PADDING_BOTTOM = 24.0
 
+GROUP_PADDING = 8.0
 MARGIN_X = FRAME_PADDING_SIDE                          # 24.0
 MARGIN_BOTTOM = FRAME_PADDING_BOTTOM                   # 24.0
 
@@ -284,7 +317,7 @@ def auto_fit_frame(tree, settings, frame_name, initial_bounds=None):
     if frame is None:
         return
     children = [item for item in settings.images
-                if item.item_type in {'IMAGE', 'TEXT', 'FRAME'} and item.parent_frame == frame_name]
+                if item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} and item.parent_frame == frame_name]
     if not children:
         if initial_bounds and frame_name in initial_bounds:
             orig_x, orig_y, orig_w, orig_h = initial_bounds[frame_name]
@@ -299,6 +332,13 @@ def auto_fit_frame(tree, settings, frame_name, initial_bounds=None):
         min_y = min(bound[1] for bound in bounds)
         max_x = max(bound[2] for bound in bounds)
         max_y = max(bound[3] for bound in bounds)
+        if frame.frame_is_group:
+            # A group hugs its members: no header, a thin margin for the outline.
+            pad = GROUP_PADDING
+            frame.location = (min_x - pad, max_y + pad)
+            frame.frame_width = max(1.0, max_x - min_x + 2 * pad)
+            frame.frame_height = max(1.0, max_y - min_y + 2 * pad)
+            return
         margin_top = frame_header_height(frame) + FRAME_PADDING_TOP
         frame.location = (min_x - MARGIN_X, max_y + margin_top)
         frame.frame_width = max(100.0, max_x - min_x + 2 * MARGIN_X)
@@ -310,7 +350,7 @@ def expand_frame_to_fit(frame, settings):
     if frame is None:
         return
     children = [item for item in settings.images
-                if item.item_type in {'IMAGE', 'TEXT', 'FRAME'} and item.parent_frame == frame.frame_node_name]
+                if item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'} and item.parent_frame == frame.frame_node_name]
     if not children:
         return
     bounds = [item_bounds(item) for item in children]
@@ -365,7 +405,7 @@ def find_frame_at_location(settings, location, margin=0.0, exclude_frame_names=N
     depth = {frame.frame_node_name: order
              for order, (_, frame) in enumerate(visible_frames_in_draw_order(settings))}
     for index, frame in enumerate(settings.images):
-        if (frame.item_type != 'FRAME' or not frame.show_in_editor
+        if (frame.item_type != 'FRAME' or not frame.show_in_editor or frame.frame_is_group
                 or frame.frame_node_name in excluded):
             continue
         x0, y0, x1, y1 = _get_frame_bounds(frame)
@@ -421,7 +461,7 @@ def attach_items_to_frame(tree, settings, targets, frame_name, initial_bounds=No
 def visible_frames_in_draw_order(settings):
     """Use the same frame order for painting and mouse hit testing."""
     frames = [(index, item) for index, item in enumerate(settings.images)
-              if item.item_type == 'FRAME' and item.show_in_editor]
+              if item.item_type == 'FRAME' and item.show_in_editor and not item.frame_is_group]
     names = {frame.frame_node_name for _, frame in frames}
     result, seen = [], set()
     def visit(entry):
@@ -477,7 +517,7 @@ def auto_parent_images_to_frames(tree, settings, targets=None, allow_unparent=Fa
     If allow_unparent is False, images already attached to a frame will not be
     accidentally unparented when dragged outside."""
     frames = [item for item in settings.images
-              if item.item_type == 'FRAME' and item.show_in_editor]
+              if item.item_type == 'FRAME' and item.show_in_editor and not item.frame_is_group]
     bounds = []
     for frame in frames:
         x0, y0, x1, y1 = _get_frame_bounds(frame)
@@ -487,7 +527,7 @@ def auto_parent_images_to_frames(tree, settings, targets=None, allow_unparent=Fa
 
     affected_frames = set()
     for img in (targets if targets is not None else settings.images):
-        if img.item_type not in {'IMAGE', 'TEXT'} or (img.item_type == 'IMAGE' and not img.image_data):
+        if img.item_type not in {'IMAGE', 'TEXT', 'SHAPE'} or (img.item_type == 'IMAGE' and not img.image_data):
             continue
         x, y = img.location
         old_parent = img.parent_frame
@@ -658,6 +698,18 @@ def _draw_callback_px(*args):
             except Exception as exc:
                 print(f"Kanvas comparison: {exc}")
 
+    # Shapes annotate the images, so they sit above them and below the arrows.
+    try:
+        from .gpu_shape import draw_shapes
+        draw_shapes(settings, view_pixel_size, view_bounds)
+    except Exception as exc:
+        print(f"Kanvas shapes: {exc}")
+    try:
+        from .gpu_group import draw_group_outlines
+        draw_group_outlines(settings, view_pixel_size)
+    except Exception as exc:
+        print(f"Kanvas groups: {exc}")
+
     draw_checklist_links(settings, view_pixel_size, region)
     draw_arrows(settings, view_pixel_size)
 
@@ -764,6 +816,16 @@ def _draw_frame_labels():
     # Arrow geometry is behind text in POST_VIEW; its labels follow the same
     # order in POST_PIXEL so card and frame text remain readable.
     draw_arrow_labels(settings, region)
+    try:
+        from .gpu_shape import draw_shape_labels
+        draw_shape_labels(settings, region)
+    except Exception as exc:
+        print(f"Kanvas shape text: {exc}")
+    try:
+        from .gpu_group import draw_group_labels
+        draw_group_labels(settings, region)
+    except Exception as exc:
+        print(f"Kanvas group names: {exc}")
     ordered_frames = visible_frames_in_draw_order(settings)
     frame_depth = {frame.frame_node_name: depth for depth, (_, frame) in enumerate(ordered_frames)}
     for _, frame in ordered_frames:

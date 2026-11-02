@@ -19,9 +19,11 @@ This documentation is written for people who use Kanvas. It explains what each t
 | [Selecting and transforming](transforms.md) | Selection, move, rotate, scale, stretch, shear, snapping, and image adjustments |
 | [Arranging items](arranging.md) | Align, distribute, Pack, size matching, and focusing |
 | [Frames](frames.md) | Grouping items and keeping boards tidy |
+| [Groups](groups.md) | Keeping items together with `Ctrl + G`, without a frame |
 | [Text cards and checklists](text-cards.md) | Notes, Markdown, and task lists |
 | [Comparing two images](comparison.md) | A/B comparison card with a divider |
 | [Arrows](arrows.md) | Connecting items with arrows |
+| [Shapes](shapes.md) | Drawing rectangles, triangles, diamonds, and polygons, editing their vertices, and adding text |
 
 ## Marking up images
 

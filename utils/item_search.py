@@ -12,7 +12,7 @@ def item_matches(item, query):
     if query in item.name.casefold():
         return True
     kind = item.item_type
-    if kind == 'TEXT':
+    if kind in {'TEXT', 'SHAPE'}:
         return any(query in line.value.casefold() for line in item.text_lines)
     if kind == 'IMAGE':
         return any(query in region.name.casefold() for region in item.markup_regions)

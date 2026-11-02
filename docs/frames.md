@@ -48,5 +48,6 @@ Locking a frame in the item list **locks everything inside it**, including neste
 
 ## Next
 
+- [Groups](groups.md)
 - [Text cards and checklists](text-cards.md)
 - [Arrows](arrows.md)
