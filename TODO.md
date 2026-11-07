@@ -1,3 +1,23 @@
+## Sessão de 2026-11-06/07 — edição de vértices, Bezier, SVG e desempenho de shapes
+
+Validado no Blender 5.1 e 5.2 sem interface gráfica e conferido pelo usuário numa janela (Edit Vertices, Bezier, SVG, desempenho, `Ctrl+L`, Flip A/B, seta Both, cópia de setas no `Shift+D`). Commits `7beee14` e `4f2d13e` no branch `wip/session-2026-11-01` (sem push). Detalhes em cada item marcado mais abaixo.
+
+### Feito
+- **Edição avançada de vértices:** seleção (clique, `Shift`, caixa, `Ctrl+A`/`Ctrl+I`), mover vários, `X`/`Delete` e botão **Delete**, `Ctrl`+clique no vértice apaga, mínimo de 3; setas presas em vértice removido caem no novo contorno.
+- **Selo e painel de atalhos do Edit Vertices**, compartilhados com Mask e Color (`gpu_shortcuts.py`), abaixo do overlay Edit | Move; `Esc` sai do modo.
+- **Bezier:** tipos **Sharp**, **Auto**, **Aligned**, **Mirrored** (pedido do usuário: o "espelho" que ele esperava do Auto; arrastar alça de Auto vira Mirrored) e **Free**; menu `V` e botões no painel; arrastar a aresta curva; `Ctrl`+clique na aresta insere vértice sem mudar a curva; **Curve Resolution** por shape (2 a 64).
+- **SVG:** importar (Add > Shape) e exportar (menu de contexto e painel), com round trip testado.
+- **Desempenho:** shape com 1920 pontos passou de ~900 ms para 0,07 ms por redesenho sem mudança (triangulação em C do Blender, caches de contorno, preenchimento e geometria, um traço por aresta).
+- **Antes, no mesmo dia:** conectar itens com setas (`Ctrl+L`), copiar setas ao duplicar, Flip A/B no card de comparação, correção da seta em Both.
+- **Testes:** `test_alignment_text` e `test_f_detach_and_delete` atualizados para o comportamento atual; referências mortas a itens da coleção corrigidas (derrubavam o Blender 5.2), inclusive em `import_svg_shapes`; `test_frame_layer_and_list` roda no 5.2. Suíte completa: 5.1 com 101 aprovados (6 pedem GPU, 1 pede arquivo), 5.2 com 107 aprovados (1 pede arquivo), nenhuma falha.
+
+### Decisões
+- Primeiro deixar o que existe funcionando; depois o **motor vetorial** (furos, booleanas, gradientes); só então o importador fiel (SVG completo, EPS/PDF/AI via Inkscape) e vetorizar desenho para textura. Ver a seção "Motor vetorial".
+- Depois de `settings.images.add()`/`remove()`, buscar itens de novo pelo `item_id`; rodar testes novos também no 5.2.
+
+### Próximo passo sugerido
+- **Furos e formas compostas** (base das booleanas), ou o item **Tirar o foco dos itens ao redor nos editores**, que ficou pendente.
+
 ## Sessão de 2026-11-01 — desempenho, modos Edit/Move, Color Markup e Auto Select
 
 Tudo abaixo foi implementado e validado no Blender 5.1 sem interface gráfica (testes em `scratch/`). Itens que dependem de cursor, gesto ou aparência trazem a ressalva para a aceitação visual em janela gráfica. Itens ainda abertos desta frente estão na seção seguinte (por exemplo, o refinamento do Auto Select e a medição de VRAM).
