@@ -29,6 +29,12 @@ An arrow end attaches to a [shape](shapes.md) in three ways, so you can build di
 
 The end follows the shape when it moves, turns, scales, or is resized. When you edit a shape's vertices, attached ends stay where they were. Deleting a shape leaves the arrow where it was.
 
+## Connecting items
+
+Select two or more shapes, images, or cards and press `Ctrl + L` (or right-click, **Connect with Arrows**). Kanvas draws an arrow between each pair, attached to the sides that face each other: items side by side connect left to right, stacked items top to bottom. Shapes other than rectangles also offer their corners, so a diamond is joined at its tip.
+
+With more than two items the arrows are chained in the order of the item list, so reorder the list to change the chain. A pair that already has an arrow, in either direction, is skipped. The arrows follow the items when they move, like any attached arrow.
+
 ## Editing an arrow
 
 Click an arrow to select it. You can then:

@@ -71,6 +71,67 @@ def _create_arrow(settings, center):
     return arrow
 
 
+def connect_items(settings, items):
+    """Chain arrows through ``items`` in order, each between the sides that face each other.
+
+    Returns the new arrows. A pair that already has an arrow in either direction, or an
+    item without anchors, is skipped.
+    """
+    from ..utils.arrow_geometry import facing_anchors
+    from ..utils.gpu.gpu_common import get_prefs
+    pairs = []
+    for first, second in zip(items, items[1:]):
+        if first.item_id == second.item_id:
+            continue
+        linked = any({arrow.start_item_id, arrow.end_item_id} == {first.item_id, second.item_id}
+                     for arrow in settings.arrows)
+        anchors = None if linked else facing_anchors(first, second)
+        if anchors:
+            pairs.append((first.item_id, second.item_id, anchors))
+    prefs = get_prefs()
+    created = []
+    for first_id, second_id, (start, end) in pairs:
+        arrow = settings.arrows.add()
+        arrow.arrow_id = uuid.uuid4().hex
+        arrow.name = unique_item_name(settings, 'Arrow')
+        if prefs and prefs.arrow_style == 'ROUNDED':
+            arrow.thickness = 8.0
+        arrow.start, arrow.end = start[1], end[1]
+        arrow.start_item_id, arrow.start_uv = first_id, start[0]
+        arrow.end_item_id, arrow.end_uv = second_id, end[0]
+        created.append(arrow.arrow_id)
+    return created
+
+
+class KANVAS_OT_ConnectItems(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.connect_items'
+    bl_label = 'Connect Selected'
+    bl_description = ('Draw arrows between the selected shapes, images and cards, attached to the '
+                      'sides that face each other. With more than two, they are chained in list order')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        settings = get_settings(context)
+        from ..utils.gpu import ensure_item_ids
+        ensure_item_ids(settings)
+        items = [item for item in settings.images
+                 if item.is_selected and item.item_type in {'IMAGE', 'TEXT', 'SHAPE'}]
+        if len(items) < 2:
+            self.report({'WARNING'}, 'Select at least two shapes, images or cards')
+            return {'CANCELLED'}
+        created = connect_items(settings, items)
+        if not created:
+            self.report({'INFO'}, 'Nothing to connect: the selected items are already connected')
+            return {'CANCELLED'}
+        for arrow in settings.arrows:
+            arrow.is_selected = False
+        settings.active_arrow_index = -1
+        if context.area:
+            context.area.tag_redraw()
+        self.report({'INFO'}, f'Connected with {len(created)} arrow(s)')
+        return {'FINISHED'}
+
+
 class KANVAS_OT_CreateArrow(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.create_arrow'
     bl_label = 'Add Arrow'

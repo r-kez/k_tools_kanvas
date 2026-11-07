@@ -1,10 +1,8 @@
 """GPU mask textures built from UV brush marks stored on image instances."""
 
-import bpy
 import gpu
 import math
 import numpy as np
-from ..hidden_datablocks import hidden_name
 from itertools import islice
 
 
@@ -141,38 +139,23 @@ def mask_texture_for_item(item):
                                 cached['pixels'] if append_only else None,
                                 old_count if append_only else 0,
                                 polygons=() if append_only else item.mask_polygons)
-        image = cached['image']
         rgba = cached['rgba']
     else:
-        if cached:
-            old_image = cached['image']
-            if old_image.name in bpy.data.images:
-                bpy.data.images.remove(old_image)
         pixels = rasterize_mask(item.mask_dabs, width, height,
                                 polygons=item.mask_polygons)
         rgba = np.empty((height, width, 4), dtype=np.float32)
         rgba[:, :, 3] = 1.0
-        image = bpy.data.images.new(
-            hidden_name(f"Kanvas Mask {item.item_id[:8]}"), width=width, height=height,
-            alpha=True, float_buffer=True,
-        )
-        image.colorspace_settings.name = 'Non-Color'
     rgba[:, :, :3] = pixels[:, :, None]
-    image.pixels.foreach_set(rgba.ravel())
-    image.update()
-    texture = gpu.texture.from_image(image)
+    # A plain GPU texture, not a bpy image: Blender would flag an image like
+    # that as unsaved and ask about it on every save / quit.
+    texture = gpu.types.GPUTexture(
+        (width, height), format='RGBA32F',
+        data=gpu.types.Buffer('FLOAT', width * height * 4, rgba.ravel()))
     texture.filter_mode(True)
-    _mask_cache[key] = {'signature': signature, 'image': image,
+    _mask_cache[key] = {'signature': signature,
                         'texture': texture, 'pixels': pixels, 'rgba': rgba}
     return texture
 
 
 def clear_mask_cache():
-    for cached in tuple(_mask_cache.values()):
-        image = cached['image']
-        try:
-            if image.name in bpy.data.images:
-                bpy.data.images.remove(image)
-        except (ReferenceError, RuntimeError):
-            pass
     _mask_cache.clear()

@@ -104,14 +104,12 @@ try:
     assert color_painter._history_step(_MarkupEditProxy(item), redo=True)
     assert len(first.dabs) == 1
 
-    cached_image = bpy.data.images.new('Stale mask cache', 4, 4)
-    gpu_mask._mask_cache[('stale-mask',)] = {'image': cached_image}
-    cached_color = bpy.data.images.new('Stale color cache', 4, 4)
-    gpu_markup._markup_cache[('stale-color',)] = {'image': cached_color}
+    gpu_mask._mask_cache[('stale-mask',)] = {'texture': None}
+    gpu_markup._markup_cache[('stale-color',)] = {'texture': None}
     addon.refresh_kanvas_after_undo(None)
     assert not gpu_mask._mask_cache and not gpu_markup._markup_cache
-    assert 'Stale mask cache' not in bpy.data.images
-    assert 'Stale color cache' not in bpy.data.images
+    assert not any(i.name.lstrip('.').startswith('Kanvas ') and 'Mask' in i.name
+                   for i in bpy.data.images)
     print('MASK SESSION UNDO PASS')
 finally:
     addon.unregister()

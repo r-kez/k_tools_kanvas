@@ -20,6 +20,7 @@ from k_tools_kanvas.utils.arrow_geometry import image_point_from_uv
 
 class Painter:
     modal = KANVAS_OT_PaintImageMask.modal
+    _shortcut_toggle_hit = KANVAS_OT_PaintImageMask._shortcut_toggle_hit
     _sam_ready = lambda self, item: False   # Auto Select is not set up in this test
     _finish = KANVAS_OT_PaintImageMask._finish
     _clear_line = KANVAS_OT_PaintImageMask._clear_line

@@ -779,6 +779,52 @@ class KANVAS_OT_RemoveImage(KanvasTreeOnly, bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
 
+def duplicate_connecting_arrows(settings, copies):
+    """Copy every arrow whose two ends are both attached to duplicated items.
+
+    ``copies`` maps source item ID -> new item ID. The new arrows attach to the copies,
+    so duplicating a diagram keeps its connections. Arrows with a loose end, or an end
+    on an item that was not duplicated, are left alone. Returns how many were copied.
+    """
+    copies = {source: new for source, new in copies.items() if new}
+    by_id = {item.item_id: item for item in settings.images}
+
+    def copied_line(source_id, line_id):
+        if not line_id:
+            return ''
+        source, copy = by_id.get(source_id), by_id.get(copies[source_id])
+        if source is None or copy is None:
+            return ''
+        for index, line in enumerate(source.text_lines):
+            if line.line_id == line_id:
+                return copy.text_lines[index].line_id if index < len(copy.text_lines) else ''
+        return ''
+
+    wanted = [arrow.arrow_id for arrow in settings.arrows
+              if arrow.start_item_id in copies and arrow.end_item_id in copies]
+    count = 0
+    for arrow_id in wanted:
+        # Adding to the collection can move its memory: find the source again each time.
+        source = next(a for a in settings.arrows if a.arrow_id == arrow_id)
+        values ={name: getattr(source, name) for name in (
+            'label', 'curve_offset', 'thickness', 'line_style', 'head_style',
+            'start', 'end', 'start_uv', 'end_uv', 'color')}
+        start_id, end_id = source.start_item_id, source.end_item_id
+        start_line = copied_line(start_id, source.start_line_id)
+        end_line = copied_line(end_id, source.end_line_id)
+        new_arrow = settings.arrows.add()
+        new_arrow.arrow_id = uuid.uuid4().hex
+        new_arrow.name = unique_item_name(settings, 'Arrow')
+        for name, value in values.items():
+            if not isinstance(value, (str, int, float)):
+                value = tuple(value)
+            setattr(new_arrow, name, value)
+        new_arrow.start_item_id, new_arrow.end_item_id = copies[start_id], copies[end_id]
+        new_arrow.start_line_id, new_arrow.end_line_id = start_line, end_line
+        count += 1
+    return count
+
+
 class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
     """Duplicate the active image or text card without copying its source file."""
     bl_idname  = "kanvas.duplicate_image"
@@ -815,6 +861,7 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
         if not new_ids:
             return {'CANCELLED'}
 
+        copied_arrows = duplicate_connecting_arrows(settings, copies)
         selected_ids = list(new_ids)
         if group_members:
             from .ops_group import group_selection
@@ -840,7 +887,10 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
         if getattr(context, 'area', None):
             context.area.tag_redraw()
 
-        self.report({'INFO'}, f"Duplicated {len(new_ids)} item(s)")
+        message = f"Duplicated {len(new_ids)} item(s)"
+        if copied_arrows:
+            message += f" and {copied_arrows} connecting arrow(s)"
+        self.report({'INFO'}, message)
         return {'FINISHED'}
 
     def _duplicate(self, context, settings, source_id):
@@ -958,11 +1008,12 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
 
         if source.item_type == 'SHAPE':
             new_img.shape_kind = source.shape_kind
-            from ..properties import set_shape_vertices
-            set_shape_vertices(new_img, [tuple(vertex.co) for vertex in source.shape_vertices])
+            from ..properties import set_vertex_records, vertex_records
+            set_vertex_records(new_img, vertex_records(source))
             for name in ('shape_width', 'shape_height', 'shape_show_fill', 'shape_fill_opacity',
                          'shape_show_outline', 'shape_line_width', 'shape_line_style',
-                         'shape_show_text', 'text_font_size', 'opacity'):
+                         'shape_show_text', 'text_font_size', 'opacity',
+                         'shape_curve_resolution'):
                 setattr(new_img, name, getattr(source, name))
             for name in ('shape_fill_color', 'shape_line_color', 'text_color'):
                 setattr(new_img, name, tuple(getattr(source, name)))

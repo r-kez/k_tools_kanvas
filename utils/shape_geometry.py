@@ -4,6 +4,10 @@ A shape stores its vertices in a unit box (-0.5..0.5 on both axes). The canvas
 position of a vertex is its unit position times the shape size, then the shape's
 rotation, then its location. Every preset, and every hand-edited polygon, uses the
 same representation, so the kind of a shape can change at any time.
+
+Vertices can carry Bezier handles (see `handle_type`). The outline used to draw,
+pick, triangulate, attach arrows and fit the box is the curve flattened into short
+segments; a shape whose vertices are all Sharp has exactly its vertices as outline.
 """
 
 import math
@@ -23,6 +27,15 @@ DEFAULT_SIZE = (160.0, 120.0)
 MIN_SIZE = 4.0
 ELLIPSE_SEGMENTS = 48
 MIN_VERTICES = 3
+CURVE_STEPS = 16            # default segments per curved edge (shape_curve_resolution)
+HANDLE_TYPES = (
+    ('SHARP', 'Sharp', 'A corner with straight edges', 'HANDLE_VECTOR'),
+    ('AUTO', 'Auto', 'A smooth curve worked out from the neighbouring vertices', 'HANDLE_AUTO'),
+    ('ALIGNED', 'Aligned', 'A smooth curve: the two handles stay in line', 'HANDLE_ALIGNED'),
+    ('MIRRORED', 'Mirrored', 'A smooth curve: the two handles mirror each other, same angle '
+     'and same length', 'MOD_MIRROR'),
+    ('FREE', 'Free', 'Each handle moves on its own, for a curved corner', 'HANDLE_FREE'),
+)
 
 
 def _regular(sides, start_angle=90.0):
@@ -98,9 +111,150 @@ def canvas_to_unit(item, point):
     return x / max(width, 1e-6), y / max(height, 1e-6)
 
 
-def outline(item):
+# --- Bezier curve -----------------------------------------------------------------------
+
+def _lerp(a, b, t):
+    return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+
+
+def effective_handles(records):
+    """(left, right) unit handle positions per vertex record (co, type, left, right).
+
+    Sharp: both on the vertex. Auto: along the line between the two neighbours, a sixth
+    of that distance each way (a Catmull-Rom curve). Aligned, Mirrored and Free: as stored.
+    """
+    count = len(records)
+    result = []
+    for i, (co, kind, left, right) in enumerate(records):
+        if kind == 'SHARP':
+            result.append((tuple(co), tuple(co)))
+        elif kind == 'AUTO':
+            prev, nxt = records[i - 1][0], records[(i + 1) % count][0]
+            dx, dy = (nxt[0] - prev[0]) / 6.0, (nxt[1] - prev[1]) / 6.0
+            result.append(((co[0] - dx, co[1] - dy), (co[0] + dx, co[1] + dy)))
+        else:
+            result.append((tuple(left), tuple(right)))
+    return result
+
+
+def item_records(item):
+    return [(tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right))
+            for v in item.shape_vertices]
+
+
+def segment_controls(records, handles, index):
+    """The four unit control points of the edge from vertex `index` to the next one."""
+    j = (index + 1) % len(records)
+    return (tuple(records[index][0]), handles[index][1], handles[j][0], tuple(records[j][0]))
+
+
+def is_straight(controls, eps=1e-9):
+    p0, p1, p2, p3 = controls
+    return (abs(p1[0] - p0[0]) < eps and abs(p1[1] - p0[1]) < eps
+            and abs(p2[0] - p3[0]) < eps and abs(p2[1] - p3[1]) < eps)
+
+
+def cubic(controls, t):
+    p0, p1, p2, p3 = controls
+    u = 1.0 - t
+    a, b, c, d = u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t
+    return (a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+            a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1])
+
+
+def split_cubic(controls, t):
+    """De Casteljau: (left half, right half) of an edge cut at t."""
+    p0, p1, p2, p3 = controls
+    a, b, c = _lerp(p0, p1, t), _lerp(p1, p2, t), _lerp(p2, p3, t)
+    d, e = _lerp(a, b, t), _lerp(b, c, t)
+    f = _lerp(d, e, t)
+    return (p0, a, d, f), (f, e, c, p3)
+
+
+def has_curves(item):
+    return any(vertex.handle_type != 'SHARP' for vertex in item.shape_vertices)
+
+
+_curve_cache = {}
+
+
+def curve_units(item):
+    """[(unit point, edge index, t)] along the closed outline, curves flattened.
+
+    Without curves these are exactly the vertices, with t = 0.
+    """
+    records = item_records(item)
+    curved = any(record[1] != 'SHARP' for record in records)
+    steps = max(2, int(getattr(item, 'shape_curve_resolution', CURVE_STEPS))) if curved else 0
+    key = item.as_pointer()
+    cached = _curve_cache.get(key)
+    if cached is not None and cached[0] == (records, steps):
+        return cached[1]
+    if not curved:
+        units = [(tuple(record[0]), i, 0.0) for i, record in enumerate(records)]
+        if len(_curve_cache) > 512:
+            _curve_cache.clear()
+        _curve_cache[key] = ((records, steps), units)
+        return units
+    handles = effective_handles(records)
+    units = []
+    for i in range(len(records)):
+        controls = segment_controls(records, handles, i)
+        units.append((controls[0], i, 0.0))
+        if is_straight(controls):
+            continue
+        for step in range(1, steps):
+            t = step / steps
+            units.append((cubic(controls, t), i, t))
+    if len(_curve_cache) > 512:
+        _curve_cache.clear()
+    _curve_cache[key] = ((records, steps), units)
+    return units
+
+
+def vertex_points(item):
     """Canvas positions of the shape's vertices, in order."""
     return [unit_to_canvas(item, vertex.co) for vertex in item.shape_vertices]
+
+
+_outline_cache = {}
+
+
+def outline(item):
+    """Canvas points of the shape's outline: the vertices, with curved edges flattened.
+
+    Cached until the shape changes, since drawing, bounds and picking all ask for it.
+    The list is shared: callers must not change it.
+    """
+    units = curve_units(item)
+    width, height = shape_extent(item)
+    key = (id(units), len(units), units[0][0] if units else None,
+           tuple(item.location), item.rotation, width, height)
+    cached = _outline_cache.get(item.as_pointer())
+    if cached is not None and cached[0] == key and cached[2] is units:
+        return cached[1]
+    angle = math.radians(item.rotation)
+    c, s = math.cos(angle), math.sin(angle)
+    x0, y0 = item.location
+    points = [(x0 + u[0] * width * c - u[1] * height * s,
+               y0 + u[0] * width * s + u[1] * height * c) for u, _, _ in units]
+    if len(_outline_cache) > 512:
+        _outline_cache.clear()
+    _outline_cache[item.as_pointer()] = (key, points, units)
+    return points
+
+
+def edge_midpoints(item):
+    """Unit point halfway along each edge (on the curve when the edge is curved)."""
+    records = item_records(item)
+    handles = effective_handles(records)
+    return [cubic(segment_controls(records, handles, i), 0.5) for i in range(len(records))]
+
+
+def handle_points(item, index):
+    """(left, right) canvas positions of a vertex's handles."""
+    left, right = effective_handles(item_records(item))[index]
+    return unit_to_canvas(item, left), unit_to_canvas(item, right)
 
 
 def bounds(item):
@@ -194,12 +348,60 @@ def _is_ear(a, b, c, polygon):
     return True
 
 
-def triangulate(points):
-    """Triangles (as point triples) covering a simple polygon, by ear clipping.
+def _tessellate(points):
+    """Triangle index triples from Blender's own polygon filler, or None outside Blender."""
+    try:
+        from mathutils import Vector
+        from mathutils.geometry import tessellate_polygon
+    except ImportError:
+        return None
+    try:
+        return tessellate_polygon([[Vector((x, y, 0.0)) for x, y in points]])
+    except (ValueError, TypeError):
+        return None
 
-    Falls back to a fan from the first vertex when the outline crosses itself, so a
-    badly edited polygon still draws something.
+
+_triangle_cache = {}
+
+
+def fill_triangles(item):
+    """Index triples into `outline(item)` that fill the shape, cached with the curve.
+
+    Triangulating in the unit box is enough: the box transform (scale, rotation and
+    translation, never a mirror) keeps every triangle valid on the canvas.
     """
+    units = curve_units(item)
+    cached = _triangle_cache.get(item.as_pointer())
+    if cached is not None and cached[0] is units:
+        return cached[1]
+    points = [unit for unit, _, _ in units]
+    index = {}
+    for i, point in enumerate(points):
+        index.setdefault(point, i)
+    triangles = [tuple(index[p] for p in triangle) for triangle in triangulate(points)]
+    if len(_triangle_cache) > 512:
+        _triangle_cache.clear()
+    _triangle_cache[item.as_pointer()] = (units, triangles)
+    return triangles
+
+
+def triangulate(points):
+    """Triangles (as point triples) covering a polygon.
+
+    Uses Blender's polygon filler when available (fast, and it copes with outlines
+    that cross themselves); otherwise ear clipping, falling back to a fan from the
+    first vertex when the outline crosses itself, so a badly edited polygon still
+    draws something.
+    """
+    if len(points) < 3:
+        return []
+    indices = _tessellate(points)
+    if indices:
+        return [(points[a], points[b], points[c]) for a, b, c in indices]
+    return _ear_clip(points)
+
+
+def _ear_clip(points):
     if len(points) < 3:
         return []
     remaining = list(points)
@@ -224,16 +426,19 @@ def triangulate(points):
     return triangles
 
 
-def normalized(vertices):
+def normalized(vertices, extent=None):
     """Rescale unit vertices so their bounding box is exactly the unit box.
 
-    Returns (vertices, center, span): the new vertices, the former box center and
-    the former box size, all in unit coordinates, or None for a degenerate shape.
+    `extent` are the points that must fill the box (the flattened curve), when they
+    differ from the vertices. Returns (vertices, center, span): the new vertices, the
+    former box center and the former box size, all in unit coordinates, or None for a
+    degenerate shape.
     """
     if not vertices:
         return None
-    xs = [v[0] for v in vertices]
-    ys = [v[1] for v in vertices]
+    extent = extent or vertices
+    xs = [v[0] for v in extent]
+    ys = [v[1] for v in extent]
     span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
     if span_x < 1e-6 or span_y < 1e-6:
         return None
@@ -264,7 +469,7 @@ def gizmo_layout(item, size):
 def hit_vertex(item, point, radius):
     """Index of the vertex within `radius` of a canvas point, or None."""
     best, best_distance = None, radius
-    for index, canvas in enumerate(outline(item)):
+    for index, canvas in enumerate(vertex_points(item)):
         distance = math.dist(canvas, point)
         if distance <= best_distance:
             best, best_distance = index, distance
@@ -272,9 +477,53 @@ def hit_vertex(item, point, radius):
 
 
 def hit_edge(item, point, radius):
-    """(edge index, parameter) of an outline edge within `radius`, or None."""
-    index, distance, t = nearest_edge(outline(item), point)
-    return (index, t) if index >= 0 and distance <= radius else None
+    """(edge index, curve parameter) of an outline edge within `radius`, or None."""
+    units = curve_units(item)
+    points = [unit_to_canvas(item, unit) for unit, _, _ in units]
+    index, distance, local = nearest_edge(points, point)
+    if index < 0 or distance > radius:
+        return None
+    _, edge, t0 = units[index]
+    _, next_edge, t1 = units[(index + 1) % len(units)]
+    if next_edge != edge:
+        t1 = 1.0
+    return edge, t0 + (t1 - t0) * local
+
+
+def hit_handle(item, point, radius, indices):
+    """(vertex index, 'left' or 'right') of a visible handle near a canvas point, or None.
+
+    Only the vertices in `indices` (the selected ones) show handles; Sharp ones have none.
+    """
+    best, best_distance = None, radius
+    for index in indices:
+        if item.shape_vertices[index].handle_type == 'SHARP':
+            continue
+        for side, canvas in zip(('left', 'right'), handle_points(item, index)):
+            distance = math.dist(canvas, point)
+            if distance <= best_distance:
+                best, best_distance = (index, side), distance
+    return best
+
+
+def bend_offsets(t, delta):
+    """How far the two inner control points move so the curve point at t moves by delta.
+
+    The weighting is the one Inkscape uses when a segment is dragged: near an end only
+    that end's handle moves, in the middle both share the pull.
+    """
+    t = max(0.1, min(0.9, t))
+    if t <= 1.0 / 6.0:
+        weight = 0.0
+    elif t <= 0.5:
+        weight = ((6.0 * t - 1.0) / 2.0) ** 3 / 2.0
+    elif t <= 5.0 / 6.0:
+        weight = (1.0 - ((6.0 * (1.0 - t) - 1.0) / 2.0) ** 3) / 2.0 + 0.5
+    else:
+        weight = 1.0
+    first = (1.0 - weight) / (3.0 * t * (1.0 - t) * (1.0 - t))
+    second = weight / (3.0 * t * t * (1.0 - t))
+    return ((delta[0] * first, delta[1] * first), (delta[0] * second, delta[1] * second))
 
 
 # --- arrow anchors ---------------------------------------------------------------------
@@ -301,9 +550,7 @@ def anchor_points(item):
     if item.shape_kind == 'ELLIPSE':
         units = vertices[::max(1, len(vertices) // 8)]
     else:
-        units = list(vertices)
-        units += [((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
-                  for a, b in zip(vertices, vertices[1:] + vertices[:1])]
+        units = list(vertices) + edge_midpoints(item)
     return [((u[0] + 0.5, u[1] + 0.5), unit_to_canvas(item, u)) for u in units]
 
 

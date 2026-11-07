@@ -1,9 +1,7 @@
 """Color markup composited over an image without changing its visibility mask."""
 
-import bpy
 import gpu
 import numpy as np
-from ..hidden_datablocks import hidden_name
 
 from .gpu_mask import mask_dimensions, rasterize_mask
 
@@ -189,14 +187,7 @@ def _composite_regions(regions, masks, width, height, lines=(), only=-1):
 
 
 def _drop_cached(key):
-    cached = _markup_cache.pop(key, None)
-    if cached:
-        image = cached['image']
-        try:
-            if image.name in bpy.data.images:
-                bpy.data.images.remove(image)
-        except (ReferenceError, RuntimeError):
-            pass
+    _markup_cache.pop(key, None)
 
 
 def markup_texture_for_item(item):
@@ -218,25 +209,19 @@ def markup_texture_for_item(item):
                for index, region in enumerate(item.markup_regions)):
         _drop_cached(key)
         return None
-    same_size = cached and cached['image'].size[:] == (width, height)
+    same_size = cached and cached['size'] == (width, height)
     masks = _region_masks(item.markup_regions, width, height,
                           cached if same_size else None)
     rgba = _composite_regions(item.markup_regions, masks, width, height, lines, only)
-    if same_size:
-        image = cached['image']
-    else:
+    if not same_size:
         _drop_cached(key)
-        image = bpy.data.images.new(
-            hidden_name(f'Kanvas Color Markup {item.item_id[:8]}'),
-            width=width, height=height, alpha=True, float_buffer=True,
-        )
-        image.alpha_mode = 'PREMUL'
-        image.colorspace_settings.name = 'Non-Color'
-    image.pixels.foreach_set(rgba.ravel())
-    image.update()
-    texture = gpu.texture.from_image(image)
+    # A plain GPU texture, not a bpy image: Blender would flag an image like
+    # that as unsaved and ask about it on every save / quit.
+    texture = gpu.types.GPUTexture(
+        (width, height), format='RGBA32F',
+        data=gpu.types.Buffer('FLOAT', width * height * 4, rgba.ravel()))
     texture.filter_mode(True)
-    _markup_cache[key] = {'signature': signature, 'image': image,
+    _markup_cache[key] = {'signature': signature, 'size': (width, height),
                           'texture': texture, 'region_masks': masks}
     return texture
 

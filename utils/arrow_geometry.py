@@ -106,6 +106,49 @@ def attachable_anchor_points(item):
     return []
 
 
+def side_midpoints(item):
+    """(uv, canvas point) at the middle of each side of an item, for connecting arrows.
+
+    Images use their transformed edges, shapes the middle of every edge (an ellipse its
+    eight anchors) and cards the middle of each side of their box. Other items have none.
+    """
+    if item.item_type == 'IMAGE':
+        if not item.image_data:
+            return []
+        return [(uv, point) for uv, point in image_anchor_points(item)
+                if (uv[0] == 0.5) != (uv[1] == 0.5)]
+    if item.item_type == 'SHAPE':
+        from .shape_geometry import anchor_points, MIN_VERTICES
+        points = anchor_points(item)
+        count = len(item.shape_vertices)
+        if item.shape_kind == 'RECTANGLE' and count >= MIN_VERTICES:
+            return points[count:]
+        # Slanted edges look odd when the arrow lands in their middle, so other shapes
+        # also offer their corners (the tip of a diamond or triangle).
+        return points
+    if item.item_type == 'TEXT':
+        left, bottom, right, top = item_bounds(item)
+        return [((u, v), (left + u * (right - left), bottom + v * (top - bottom)))
+                for u, v in ((0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5))]
+    return []
+
+
+def facing_anchors(item_a, item_b):
+    """The pair of side midpoints, one on each item, that are closest to each other.
+
+    Returns ((uv_a, point_a), (uv_b, point_b)) or None when either item has no anchors.
+    Items that sit side by side connect their facing sides; stacked items, top to bottom.
+    """
+    best = None
+    for anchor_a in side_midpoints(item_a):
+        for anchor_b in side_midpoints(item_b):
+            distance = ((anchor_a[1][0] - anchor_b[1][0]) ** 2
+                        + (anchor_a[1][1] - anchor_b[1][1]) ** 2)
+            if best is None or distance < best[0] - 1e-9:
+                best = (distance, anchor_a, anchor_b)
+    return None if best is None else (best[1], best[2])
+
+
 def endpoint(settings, arrow, side):
     stored = tuple(getattr(arrow, side))
     item_id = getattr(arrow, side + '_item_id')

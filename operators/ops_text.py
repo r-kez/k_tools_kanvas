@@ -352,6 +352,28 @@ class KANVAS_OT_PickCompareSide(KanvasTreeOnly, bpy.types.Operator):
         return {'RUNNING_MODAL', 'PASS_THROUGH'}
 
 
+class KANVAS_OT_FlipCompare(KanvasTreeOnly, bpy.types.Operator):
+    bl_idname = 'kanvas.flip_compare'
+    bl_label = 'Flip A and B'
+    bl_description = 'Swap the images shown as A and B in this comparison card'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    item_id: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+
+    def execute(self, context):
+        settings = get_settings(context)
+        card = next((item for item in settings.images
+                     if item.item_id == self.item_id and item.text_compare), None)
+        if card is None:
+            return {'CANCELLED'}
+        if card.compare_a_id == card.compare_b_id:
+            return {'CANCELLED'}
+        card.compare_a_id, card.compare_b_id = card.compare_b_id, card.compare_a_id
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class KANVAS_OT_DragCompareDivider(KanvasTreeOnly, bpy.types.Operator):
     """Move the divider of a comparison card while the mouse button is held."""
     bl_idname = 'kanvas.drag_compare_divider'

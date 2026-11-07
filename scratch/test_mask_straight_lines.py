@@ -17,6 +17,7 @@ from k_tools_kanvas.utils.arrow_geometry import image_point_from_uv
 
 class Painter:
     modal = KANVAS_OT_PaintImageMask.modal
+    _shortcut_toggle_hit = KANVAS_OT_PaintImageMask._shortcut_toggle_hit
     _paint_to = KANVAS_OT_PaintImageMask._paint_to
     _paint_line = KANVAS_OT_PaintImageMask._paint_line
     _stamp = KANVAS_OT_PaintImageMask._stamp

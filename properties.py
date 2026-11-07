@@ -218,6 +218,24 @@ def set_shape_vertices(item, vertices):
         collection.add().co = (x, y)
 
 
+def vertex_records(item):
+    """Everything about a shape's vertices except the selection, to copy or restore."""
+    return [(tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right))
+            for v in item.shape_vertices]
+
+
+def set_vertex_records(item, records):
+    """Replace a shape's vertices with records from `vertex_records`."""
+    collection = item.shape_vertices
+    collection.clear()
+    for co, handle_type, left, right in records:
+        vertex = collection.add()
+        vertex.co = co
+        vertex.handle_type = handle_type
+        vertex.handle_left = left
+        vertex.handle_right = right
+
+
 def update_shape_kind(self, context):
     """Changing the kind rebuilds the vertices; Polygon keeps the current ones."""
     if getattr(self, 'item_type', '') != 'SHAPE':
@@ -233,6 +251,19 @@ def update_shape_kind(self, context):
 def update_shape_appearance(self, context):
     if getattr(context, 'area', None):
         context.area.tag_redraw()
+
+
+def update_shape_edit_vertices(self, context):
+    """Leaving Edit Vertices forgets the vertex selection, so it never comes back stale."""
+    if not self.shape_edit_vertices:
+        for vertex in self.shape_vertices:
+            if vertex.select:
+                vertex.select = False
+    update_shape_appearance(self, context)
+
+
+def update_shape_curve_resolution(self, context):
+    update_shape_appearance(self, context)
 
 
 def update_shape_fill(self, context):
@@ -252,6 +283,36 @@ class KanvasShapeVertex(bpy.types.PropertyGroup):
     co: bpy.props.FloatVectorProperty(  # type: ignore
         name='Vertex',
         description='Vertex position inside the shape box, from -0.5 to 0.5 on each axis',
+        size=2,
+    )
+    select: bpy.props.BoolProperty(  # type: ignore
+        name='Selected',
+        description='Selected in Edit Vertices: moved together and removed with X or Delete',
+        default=False,
+    )
+    # Bezier handles. A Sharp vertex has none (straight edges, as before handles existed)
+    # and an Auto vertex works them out from its neighbours, so only Aligned and Free
+    # vertices read the stored positions. Same unit-box coordinates as `co`.
+    handle_type: bpy.props.EnumProperty(  # type: ignore
+        name='Vertex Type',
+        description='How the outline passes through this vertex',
+        items=[
+            ('SHARP', 'Sharp', 'A corner with straight edges'),
+            ('AUTO', 'Auto', 'A smooth curve worked out from the neighbouring vertices'),
+            ('ALIGNED', 'Aligned', 'A smooth curve: the two handles stay in line'),
+            ('FREE', 'Free', 'Each handle moves on its own, for a curved corner'),
+            # Added last: enum values are saved by position, so the earlier ones keep theirs.
+            ('MIRRORED', 'Mirrored', 'A smooth curve: the two handles mirror each other, '
+             'same angle and same length'),
+        ],
+        default='SHARP',
+    )
+    handle_left: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Handle In', description='Handle towards the previous vertex, in the shape box',
+        size=2,
+    )
+    handle_right: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Handle Out', description='Handle towards the next vertex, in the shape box',
         size=2,
     )
 
@@ -615,10 +676,18 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
     shape_vertices: bpy.props.CollectionProperty(type=KanvasShapeVertex)  # type: ignore
     shape_edit_vertices: bpy.props.BoolProperty(  # type: ignore
         name='Edit Vertices',
-        description=('Show the vertices of this shape. Drag a vertex to move it, drag an edge '
-                     'to add a vertex, Ctrl+click a vertex to delete it'),
+        description=('Show the vertices of this shape. Click, Shift+click or drag a box to select '
+                     'vertices, drag them to move, click an edge to add a vertex, X or Delete '
+                     'removes the selected ones'),
         default=False, options={'SKIP_SAVE'},
-        update=update_shape_appearance,
+        update=update_shape_edit_vertices,
+    )
+    shape_curve_resolution: bpy.props.IntProperty(  # type: ignore
+        name='Curve Resolution',
+        description=('Straight segments used to draw each curved edge of this shape. Lower is '
+                     'lighter and more angular, higher is smoother'),
+        default=16, min=2, max=64,
+        update=update_shape_curve_resolution,
     )
     shape_show_fill: bpy.props.BoolProperty(  # type: ignore
         name='Fill', description='Fill the inside of the shape. Without a fill, only the outline picks the shape (the outline stays on)',

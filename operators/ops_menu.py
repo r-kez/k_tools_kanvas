@@ -144,6 +144,15 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
                     layout.operator('kanvas.distribute_items',
                                     text='Distribute Vertically').axis = 'VERTICAL'
 
+            if any(item.item_type == 'SHAPE' for item in content):
+                layout.separator()
+                layout.operator("kanvas.export_shapes_svg", icon='EXPORT', text="Export Shapes as SVG...")
+
+            if len(content) > 1:
+                layout.separator()
+                layout.operator("kanvas.connect_items", icon='CON_TRACKTO',
+                                text="Connect with Arrows (Ctrl+L)")
+
             if content:
                 layout.separator()
                 layout.label(text="Reset Transform", icon='LOOP_BACK')

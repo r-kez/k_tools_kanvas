@@ -14,7 +14,7 @@ The card has three buttons in its top-right corner: **Split** (the mode), **A**,
 2. Click an image on the board. It becomes A.
 3. Do the same for **B**.
 
-**Shift+click** clears a side. **Esc** or right-click cancels. A button turns solid once its side has an image. The same pickers are in the **Selection** panel.
+**Shift+click** clears a side. **Esc** or right-click cancels. A button turns solid once its side has an image. The same pickers are in the **Selection** panel, next to **Flip A / B**, which swaps the two images without picking them again.
 
 The card points at the images, it does not copy them. The originals stay where they are, and the card is drawn exactly like the board, so an image looks the same in both places. If you changed an image's brightness, contrast, saturation, or tint, the card shows those changes too. The card does not apply an image's mask or Color Markup, and ignores its rotation and shear. Each image keeps its proportions and is centered in the card, so images of different shapes get empty space around them instead of being stretched.
 

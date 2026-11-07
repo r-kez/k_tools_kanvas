@@ -230,7 +230,7 @@ def _draw_arrow_body(shader, smooth_shader, points, arrow, length,
     heads = arrow.head_style
     has_end, has_start = heads in ('END', 'BOTH'), heads == 'BOTH'
     reach = min(head_reach(arrow.thickness), length * 0.5 if has_start else length)
-    if arrow.line_style == 'SOLID':
+    if arrow.line_style == 'SOLID' and not has_start:
         if has_end:
             _draw_headed(shader, smooth_shader, points, arrow, pixel_size, color, prefs)
         else:
@@ -239,10 +239,13 @@ def _draw_arrow_body(shader, smooth_shader, points, arrow, length,
     else:
         begin = reach if has_start else 0.0
         finish = length - reach if has_end else length
-        dash, gap = dash_pattern(arrow.line_style, arrow.thickness)
         body = slice_polyline(points, begin, finish)
         if len(body) > 1:
-            _draw_plain_strokes(shader, smooth_shader, dash_polylines(body, dash, gap),
+            # A solid line between two heads is one stroke; the heads are drawn on top
+            # of its ends, so the line never pokes out behind them.
+            strokes = ([body] if arrow.line_style == 'SOLID' else
+                       dash_polylines(body, *dash_pattern(arrow.line_style, arrow.thickness)))
+            _draw_plain_strokes(shader, smooth_shader, strokes,
                                 arrow.thickness, pixel_size, color)
         if has_end:
             _draw_headed(shader, smooth_shader, slice_polyline(points, length - reach, length),

@@ -11,6 +11,8 @@ def _draw_compare_properties(layout, settings, item):
         row.label(text=f"{side}: {source.name if source else 'none'}")
         pick = row.operator("kanvas.pick_compare_side", text="", icon='EYEDROPPER')
         pick.item_id, pick.side = item.item_id, side
+    flip = box.operator("kanvas.flip_compare", text="Flip A / B", icon='ARROW_LEFTRIGHT')
+    flip.item_id = item.item_id
     box.prop(item, "compare_mode", text="Mode")
     if item.compare_mode == 'SPLIT':
         box.prop(item, "compare_split", text="Divider", slider=True)

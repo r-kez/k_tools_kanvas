@@ -137,7 +137,14 @@ try:
     helper.shape_target_id = target.item_id
     helper.shape_vertex_index = 1
     before = [tuple(v.co) for v in target.shape_vertices]
-    helper.shape_vertex_start = (target.shape_kind, before)
+    from k_tools_kanvas.properties import vertex_records
+    helper.shape_vertex_start = (target.shape_kind, vertex_records(target), [])
+    helper.shape_vertex_moves = [(1, before[1], before[1], before[1])]
+    helper.shape_vertex_grab = sg.unit_to_canvas(target, before[1])
+    helper.shape_vertex_moved = False
+    helper.shape_vertex_collapse = False
+    helper.shape_vertex_pixel = 1.0
+    helper.init_mouse_view = helper.shape_vertex_grab
     helper._update_shape_gesture(settings, 250.0, -50.0, False, False)
     assert [tuple(v.co) for v in target.shape_vertices] != before
     helper._cancel_shape_gesture(context, settings)

@@ -52,15 +52,36 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 | --- | --- |
 | `Shift + D` | Duplicate every selected item and move the copies |
 | `Ctrl + G` | Group the selected items (see [Groups](groups.md)) |
+| `Ctrl + L` | Connect the selected items with arrows (see [Arrows](arrows.md#connecting-items)) |
 | `Ctrl + Shift + G` | Ungroup |
 | `F2` | Rename the active item |
-| `X` or `Delete` | Remove the selection |
+| `X` or `Delete` | Remove the selection (in Edit Vertices: the selected vertices) |
 | `Ctrl + V` | Paste images |
 | `P` | Pack the selected images |
 | `Shift + F` | Create a frame around the selection |
 | Hold `F` while moving | Release the item from its frame |
 | `Alt + U` | Release selected items from their frame |
 | Hold `A`, then drag | Quick arrow |
+
+## Edit Vertices
+
+These work while a shape is in **Edit Vertices** (see [Shapes](shapes.md#editing-vertices)).
+
+| Shortcut | Action |
+| --- | --- |
+| Click a vertex | Select it |
+| `Shift + click` a vertex | Add it to the selection, or remove it |
+| Drag from empty space or inside the shape | Box select (`Shift` adds, `Ctrl` removes) |
+| `Ctrl + A` / `Ctrl + I` | Select all vertices (again: none) / invert |
+| Drag a vertex | Move every selected vertex |
+| Drag an edge | Bend it into a curve (a click selects its two vertices) |
+| Drag a handle of a selected vertex | Shape the curve |
+| `V` | Vertex type: Sharp, Auto, Aligned, Mirrored or Free |
+| `Ctrl + click` an edge | Add a vertex there |
+| `X` or `Delete` | Delete the selected vertices |
+| `Ctrl + click` a vertex | Delete that vertex |
+| `Ctrl` / `Shift + Ctrl` while dragging | Snap to the grid / a finer grid |
+| `Esc` | Leave Edit Vertices |
 
 ## Mask and Color editing
 

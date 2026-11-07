@@ -813,6 +813,12 @@ def _draw_frame_labels():
     if region is None or scene is None:
         return
     settings = get_settings(context)
+    try:
+        from . import gpu_shape_cursor
+        if gpu_shape_cursor.is_active():
+            gpu_shape_cursor.draw_shape_cursor(region)
+    except Exception as exc:
+        print(f"Kanvas shape cursor: {exc}")
     # Arrow geometry is behind text in POST_VIEW; its labels follow the same
     # order in POST_PIXEL so card and frame text remain readable.
     draw_arrow_labels(settings, region)
@@ -821,6 +827,11 @@ def _draw_frame_labels():
         draw_shape_labels(settings, region)
     except Exception as exc:
         print(f"Kanvas shape text: {exc}")
+    try:
+        from .gpu_shape import draw_vertex_edit_overlay
+        draw_vertex_edit_overlay(settings, context.area, region)
+    except Exception as exc:
+        print(f"Kanvas vertex edit overlay: {exc}")
     try:
         from .gpu_group import draw_group_labels
         draw_group_labels(settings, region)

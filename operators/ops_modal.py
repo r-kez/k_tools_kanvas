@@ -18,6 +18,18 @@ def clear_modal_areas():
     _active_modal_areas.clear()
     _box_armed_areas.clear()
     _shape_armed_areas.clear()
+    _shape_armed_changed()
+
+
+def _shape_armed_changed(area_key=None):
+    """Disarmed: forget the cursor icon and stop the mouse-move tracking."""
+    from ..utils.gpu import gpu_shape_cursor
+    from .. import keymap
+    if area_key is None:
+        gpu_shape_cursor.positions.clear()
+    else:
+        gpu_shape_cursor.positions.pop(area_key, None)
+    keymap.sync_hand_cursor()
 
 
 def _modifier_held(event, modifier):
@@ -100,6 +112,9 @@ def _select_canvas_items(settings, invert=False):
     return before != after
 
 
+SHAPE_GESTURES = {'SHAPE_DRAW', 'SHAPE_VERTEX', 'SHAPE_BEND', 'SHAPE_HANDLE'}
+
+
 def _undo_content_signature(settings):
     """Persistent canvas state; selection and gesture display state are excluded."""
     return tuple((item.item_id, item.item_type, tuple(item.location),
@@ -108,7 +123,8 @@ def _undo_content_signature(settings):
                   item.frame_width, item.frame_height, item.auto_resize,
                   item.text_width, item.text_height, item.text_scale,
                   item.shape_width, item.shape_height,
-                  tuple(tuple(v.co) for v in item.shape_vertices)
+                  tuple((tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right))
+                        for v in item.shape_vertices)
                   if item.item_type == 'SHAPE' else ())
                  for item in settings.images)
 
@@ -568,49 +584,155 @@ class KanvasInteractionHelpers:
         self.last_mouse_pos = (mouse[0], mouse[1])
 
     def _start_shape_vertex_gesture(self, context, event, settings, mouse, pixel_size):
-        """Start moving, adding or deleting a vertex of the shape being edited.
+        """Select, move, add or delete vertices of the shape being edited.
 
-        Returns the operator result, or None when the click is not on that shape's
-        vertices or edges and should be handled like any other click.
+        Click a vertex to select it (Shift+click toggles it) and drag to move every
+        selected vertex; drag a handle of a selected vertex to shape the curve; drag an
+        edge to bend it (a click selects its two vertices); Ctrl+click an edge to add a
+        vertex there; Ctrl+click a vertex to delete it; drag from inside the shape or
+        from empty canvas to box select. Returns the operator result, or None when the
+        click should be handled like any other click (another item, an arrow, a frame
+        header, or no shape edited).
         """
-        index = settings.active_image_index
-        shape = settings.images[index] if 0 <= index < len(settings.images) else None
-        if (shape is None or shape.item_type != 'SHAPE' or not shape.shape_edit_vertices
-                or not shape.is_selected or shape.is_locked or not shape.show_in_editor
-                or sum(1 for item in settings.images if item.is_selected) != 1):
+        from ..utils.gpu.gpu_shape import EDGE_HIT_PIXELS, VERTEX_HIT_PIXELS, vertex_edit_shape
+        shape = vertex_edit_shape(settings)
+        if shape is None:
             return None
+        from ..properties import vertex_records
         from ..utils import shape_geometry as sg
-        from .ops_shape import normalize_shape
-        start_kind = shape.shape_kind
-        start_vertices = [tuple(vertex.co) for vertex in shape.shape_vertices]
-        vertex = sg.hit_vertex(shape, mouse, 9.0 * pixel_size)
-        if vertex is not None and event.ctrl:
-            if len(shape.shape_vertices) <= sg.MIN_VERTICES:
-                self.report({'INFO'}, f'A shape needs at least {sg.MIN_VERTICES} vertices')
-                return {'CANCELLED'}
-            shape.shape_vertices.remove(vertex)
-            shape.shape_kind = 'POLYGON'
-            normalize_shape(shape)
-            context.area.tag_redraw()
-            return {'FINISHED'}
-        if vertex is None:
-            edge = sg.hit_edge(shape, mouse, 7.0 * pixel_size)
-            if edge is None:
-                return None
-            edge_index, t = edge
-            a = tuple(shape.shape_vertices[edge_index].co)
-            b = tuple(shape.shape_vertices[(edge_index + 1) % len(shape.shape_vertices)].co)
-            shape.shape_vertices.add().co = (a[0] + (b[0] - a[0]) * t,
-                                             a[1] + (b[1] - a[1]) * t)
-            vertex = edge_index + 1
-            shape.shape_vertices.move(len(shape.shape_vertices) - 1, vertex)
-        self.drag_mode = 'SHAPE_VERTEX'
+        from .ops_shape import (bend_base, delete_shape_vertices, insert_shape_vertex,
+                                select_shape_vertices, selected_vertex_indices)
+        selected = selected_vertex_indices(shape)
+        start = (shape.shape_kind, vertex_records(shape), selected)
         self.shape_target_id = shape.item_id
-        self.shape_vertex_index = vertex
-        self.shape_vertex_start = (start_kind, start_vertices)
+        self.shape_vertex_start = start
+        self.shape_vertex_moves = []
+        self.shape_vertex_collapse = False
+        self.shape_vertex_moved = False
+        self.shape_vertex_pixel = pixel_size
         self.init_mouse_view = (mouse[0], mouse[1])
         self.last_mouse_pos = (mouse[0], mouse[1])
+        handle = None if (event.ctrl or event.shift) else sg.hit_handle(
+            shape, mouse, VERTEX_HIT_PIXELS * pixel_size, selected)
+        if handle is not None:
+            index, side = handle
+            self.drag_mode = 'SHAPE_HANDLE'
+            self.shape_handle = handle
+            self.shape_handle_grab = sg.handle_points(shape, index)[0 if side == 'left' else 1]
+            return self._begin_gesture(context)
+        vertex = sg.hit_vertex(shape, mouse, VERTEX_HIT_PIXELS * pixel_size)
+        if vertex is not None and event.ctrl:
+            message = delete_shape_vertices(shape, [vertex])
+            if message:
+                self.report({'INFO'}, message)
+                return {'CANCELLED'}
+            context.area.tag_redraw()
+            return {'FINISHED'}
+        if vertex is not None and event.shift:
+            shape.shape_vertices[vertex].select = not shape.shape_vertices[vertex].select
+            context.area.tag_redraw()
+            return {'CANCELLED'}
+        collapse = False
+        if vertex is None:
+            edge = sg.hit_edge(shape, mouse, EDGE_HIT_PIXELS * pixel_size)
+            if edge is None:
+                return self._start_vertex_box(context, event, settings, shape, mouse, pixel_size)
+            edge_index, t = edge
+            ends = [edge_index, (edge_index + 1) % len(shape.shape_vertices)]
+            if event.shift:
+                both = all(shape.shape_vertices[i].select for i in ends)
+                for i in ends:
+                    shape.shape_vertices[i].select = not both
+                context.area.tag_redraw()
+                return {'CANCELLED'}
+            if not event.ctrl:
+                # Drag bends the edge; a click without moving selects its two vertices.
+                self.drag_mode = 'SHAPE_BEND'
+                self.shape_bend = (edge_index, t, bend_base(shape, edge_index), ends)
+                return self._begin_gesture(context)
+            vertex = insert_shape_vertex(shape, edge_index, t)
+            select_shape_vertices(shape, [vertex])
+        elif shape.shape_vertices[vertex].select:
+            collapse = True  # released without moving: keep only this vertex selected
+        else:
+            select_shape_vertices(shape, [vertex])
+        self.drag_mode = 'SHAPE_VERTEX'
+        self.shape_vertex_index = vertex
+        self.shape_vertex_moves = [
+            (index, tuple(shape.shape_vertices[index].co),
+             tuple(shape.shape_vertices[index].handle_left),
+             tuple(shape.shape_vertices[index].handle_right))
+            for index in selected_vertex_indices(shape)]
+        self.shape_vertex_grab = sg.unit_to_canvas(shape, shape.shape_vertices[vertex].co)
+        self.shape_vertex_collapse = collapse
+        context.area.tag_redraw()
         return self._begin_gesture(context)
+
+    def _start_vertex_box(self, context, event, settings, shape, mouse, pixel_size):
+        """Arm a vertex box selection, unless the press belongs to something else."""
+        from ..utils.arrow_geometry import hit_arrow
+        from ..utils import shape_geometry as sg
+        _idx, img = self._find_image_at_pos(context, mouse)
+        if img is not None and img.item_id != shape.item_id:
+            return None
+        if hit_arrow(settings, mouse, pixel_size)[0] is not None:
+            return None
+        _frame_idx, frame, frame_part = self._frame_hit(context, mouse)
+        if frame is not None and frame_part in {'MOVE', 'RESIZE'}:
+            return None
+        self.drag_mode = 'PENDING_VERTEX_BOX'
+        self.shape_target_id = shape.item_id
+        # A click inside the shape only clears the vertex selection; a click on empty
+        # canvas deselects the shape, which leaves Edit Vertices as before.
+        self.vertex_box_inside = img is not None or sg.contains(shape, mouse)
+        self.box_additive = event.shift
+        self.vertex_box_subtract = event.ctrl and not event.shift
+        self.pending_view_start = mouse
+        self.pending_region_start = (event.mouse_region_x, event.mouse_region_y)
+        return self._begin_gesture(context)
+
+    def _modal_vertex_box(self, context, event, settings, mouse):
+        from .ops_shape import select_shape_vertices, selected_vertex_indices, vertices_in_rect
+        shape = self._shape_target(settings)
+        if self.drag_mode == 'PENDING_VERTEX_BOX':
+            dx = event.mouse_region_x - self.pending_region_start[0]
+            dy = event.mouse_region_y - self.pending_region_start[1]
+            if abs(dx) >= 3 or abs(dy) >= 3:
+                self.drag_mode = 'VERTEX_BOX'
+                settings.box_sel_start = self.pending_view_start
+                settings.box_sel_end = mouse
+                settings.show_box_sel = True
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                self.drag_mode = 'NONE'
+                self.shape_target_id = None
+                if shape is not None and self.vertex_box_inside:
+                    if not (self.box_additive or self.vertex_box_subtract):
+                        select_shape_vertices(shape, [])
+                elif not (self.box_additive or self.vertex_box_subtract):
+                    _clear_image_selection(settings)
+                    _clear_arrow_selection(settings)
+                return self._end(context, {'FINISHED'})
+            return {'RUNNING_MODAL'}
+        if event.type == 'MOUSEMOVE':
+            settings.box_sel_end = mouse
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            settings.box_sel_end = mouse
+            settings.show_box_sel = False
+            self.drag_mode = 'NONE'
+            self.shape_target_id = None
+            if shape is not None:
+                inside = vertices_in_rect(shape, self.pending_view_start, mouse)
+                if self.vertex_box_subtract:
+                    keep = set(selected_vertex_indices(shape)) - set(inside)
+                    select_shape_vertices(shape, keep)
+                else:
+                    select_shape_vertices(shape, inside, extend=self.box_additive)
+            return self._end(context, {'FINISHED'})
+        return {'RUNNING_MODAL'}
 
     def _update_shape_gesture(self, settings, mouse_x, mouse_y, shift, ctrl):
         from ..utils import shape_geometry as sg
@@ -627,16 +749,61 @@ class KanvasInteractionHelpers:
                 item.shape_height = max(sg.MIN_SIZE, height)
                 item.location = center
             return
-        point = (mouse_x, mouse_y)
+        mode = self.drag_mode
+        moves = getattr(self, 'shape_vertex_moves', [])
+        if mode == 'SHAPE_VERTEX' and not moves:
+            return
+        first_move = not self.shape_vertex_moved
+        if first_move:
+            # A small dead zone, so a click that selects a vertex never nudges it.
+            if math.dist(self.init_mouse_view, (mouse_x, mouse_y)) < 3.0 * self.shape_vertex_pixel:
+                return
+            self.shape_vertex_moved = True
+            if item.shape_kind != 'POLYGON':
+                item.shape_kind = 'POLYGON'  # keeps the current vertices
+        if mode == 'SHAPE_BEND':
+            from .ops_shape import bend_edge, prepare_handle_edit
+            edge, t, base, ends = self.shape_bend
+            if first_move:
+                for index in ends:
+                    prepare_handle_edit(item, index)
+            start = sg.canvas_to_unit(item, self.init_mouse_view)
+            now = sg.canvas_to_unit(item, (mouse_x, mouse_y))
+            bend_edge(item, edge, t, base, (now[0] - start[0], now[1] - start[1]))
+            return
+        if mode == 'SHAPE_HANDLE':
+            from .ops_shape import prepare_handle_edit, set_handle
+            index, side = self.shape_handle
+            if first_move:
+                prepare_handle_edit(item, index)
+            grab = self.shape_handle_grab
+            point = (grab[0] + mouse_x - self.init_mouse_view[0],
+                     grab[1] + mouse_y - self.init_mouse_view[1])
+            if ctrl:
+                grid = max(1.0, float(settings.grid_size)) * (0.1 if shift else 1.0)
+                point = (round(point[0] / grid) * grid, round(point[1] / grid) * grid)
+            set_handle(item, index, side, sg.canvas_to_unit(item, point))
+            return
+        grab = self.shape_vertex_grab
+        # The grabbed vertex keeps its offset from the pointer instead of jumping onto it.
+        point = (grab[0] + mouse_x - self.init_mouse_view[0],
+                 grab[1] + mouse_y - self.init_mouse_view[1])
         if ctrl:
             grid = max(1.0, float(settings.grid_size)) * (0.1 if shift else 1.0)
             point = (round(point[0] / grid) * grid, round(point[1] / grid) * grid)
-        index = getattr(self, 'shape_vertex_index', -1)
-        if not 0 <= index < len(item.shape_vertices):
-            return
-        if item.shape_kind != 'POLYGON':
-            item.shape_kind = 'POLYGON'
-        item.shape_vertices[index].co = sg.canvas_to_unit(item, point)
+        dx, dy = point[0] - grab[0], point[1] - grab[1]
+
+        def moved(unit):
+            x, y = sg.unit_to_canvas(item, unit)
+            return sg.canvas_to_unit(item, (x + dx, y + dy))
+
+        for index, unit, left, right in moves:
+            if 0 <= index < len(item.shape_vertices):
+                vertex = item.shape_vertices[index]
+                vertex.co = moved(unit)
+                # Stored handles travel with their vertex (Auto ones are recomputed).
+                vertex.handle_left = moved(left)
+                vertex.handle_right = moved(right)
 
     def _finish_shape_gesture(self, context, settings):
         from ..utils import shape_geometry as sg
@@ -653,11 +820,16 @@ class KanvasInteractionHelpers:
                 item.location = self.shape_origin
             attach_new_shape(context, settings, item)
         elif item is not None:
+            from .ops_shape import select_shape_vertices
+            if getattr(self, 'shape_vertex_collapse', False) and not self.shape_vertex_moved:
+                select_shape_vertices(item, [self.shape_vertex_index])
+            elif mode == 'SHAPE_BEND' and not self.shape_vertex_moved:
+                select_shape_vertices(item, self.shape_bend[3])  # a click picks the edge
             normalize_shape(item)
         context.area.tag_redraw()
 
     def _cancel_shape_gesture(self, context, settings):
-        from ..properties import set_shape_vertices
+        from ..properties import set_vertex_records
         item = self._shape_target(settings)
         mode = self.drag_mode
         self.drag_mode = 'NONE'
@@ -668,9 +840,11 @@ class KanvasInteractionHelpers:
             settings.images.remove(index)
             settings.active_image_index = -1
         elif item is not None:
-            kind, vertices = self.shape_vertex_start
+            from .ops_shape import select_shape_vertices
+            kind, records, selection = self.shape_vertex_start
             item.shape_kind = kind  # rebuilds a preset, then the exact vertices return
-            set_shape_vertices(item, vertices)
+            set_vertex_records(item, records)
+            select_shape_vertices(item, selection)
         context.area.tag_redraw()
 
     def _resolve_drag_items(self, settings):
@@ -932,7 +1106,7 @@ class KanvasInteractionHelpers:
             settings.box_sel_end = (mouse_x, mouse_y)
             return
 
-        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+        if self.drag_mode in SHAPE_GESTURES:
             self._update_shape_gesture(settings, mouse_x, mouse_y, shift, ctrl)
             return
 
@@ -1173,7 +1347,7 @@ class KanvasInteractionHelpers:
         settings = get_settings(context)
         self._resolve_drag_items(settings)
 
-        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+        if self.drag_mode in SHAPE_GESTURES:
             self._finish_shape_gesture(context, settings)
             return
 
@@ -1344,7 +1518,13 @@ class KanvasInteractionHelpers:
         settings.show_box_sel = False
         settings.drop_target_frame = ''
 
-        if self.drag_mode in {'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+        if self.drag_mode in {'PENDING_VERTEX_BOX', 'VERTEX_BOX'}:
+            self.drag_mode = 'NONE'
+            self.shape_target_id = None
+            context.area.tag_redraw()
+            return
+
+        if self.drag_mode in SHAPE_GESTURES:
             self._cancel_shape_gesture(context, settings)
             return
 
@@ -1609,14 +1789,35 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             area_key = (context.window.as_pointer(), context.area.as_pointer())
             if area_key in _shape_armed_areas:
                 _shape_armed_areas.pop(area_key)
+                _shape_armed_changed(area_key)
                 context.workspace.status_text_set(None)
                 return {'CANCELLED'}
             if area_key in _box_armed_areas:
                 _box_armed_areas.discard(area_key)
                 return {'CANCELLED'}
+            from ..utils.gpu.gpu_shape import vertex_edit_shape
+            editing = vertex_edit_shape(settings)
+            if editing is not None:
+                editing.shape_edit_vertices = False
+                context.area.tag_redraw()
+                return {'CANCELLED'}
             return {'PASS_THROUGH'}
 
         if self.action in {'SELECT_ALL', 'SELECT_INVERT'}:
+            from ..utils.gpu.gpu_shape import vertex_edit_shape
+            editing = vertex_edit_shape(settings)
+            if editing is not None:
+                # In Edit Vertices these keys work on the vertices, not on the board.
+                from .ops_shape import select_shape_vertices, selected_vertex_indices
+                count = len(editing.shape_vertices)
+                chosen = set(selected_vertex_indices(editing))
+                if self.action == 'SELECT_INVERT':
+                    indices = [i for i in range(count) if i not in chosen]
+                else:
+                    indices = [] if len(chosen) == count else range(count)
+                select_shape_vertices(editing, indices)
+                context.area.tag_redraw()
+                return {'CANCELLED'}
             if _select_canvas_items(settings, invert=self.action == 'SELECT_INVERT'):
                 context.area.tag_redraw()
             return {'CANCELLED'}
@@ -1669,6 +1870,12 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 img = None
             if self.action == 'FOCUS':
                 bpy.ops.kanvas.focus_selection()
+                return {'CANCELLED'}
+            if self.action == 'VERTEX_TYPE':
+                from ..utils.gpu.gpu_shape import vertex_edit_shape
+                if vertex_edit_shape(settings) is None:
+                    return {'PASS_THROUGH'}
+                bpy.ops.wm.call_menu(name='KANVAS_MT_vertex_type')
                 return {'CANCELLED'}
             if self.action in {'GROUP', 'UNGROUP'}:
                 if self.action == 'GROUP':
@@ -1723,6 +1930,12 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     bpy.ops.kanvas.pack_images()
                     return {'CANCELLED'}
             elif self.action == 'DELETE':
+                from ..utils.gpu.gpu_shape import vertex_edit_shape
+                if vertex_edit_shape(settings) is not None:
+                    # Never deletes the shape itself while its vertices are being edited.
+                    bpy.ops.kanvas.delete_shape_vertices()
+                    context.area.tag_redraw()
+                    return {'CANCELLED'}
                 has_selected = any(i.is_selected and not i.is_locked for i in settings.images)
                 has_arrows = any(a.is_selected and not a.is_locked for a in settings.arrows)
                 has_active = (0 <= settings.active_image_index < len(settings.images)
@@ -1792,6 +2005,7 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
 
         shape_kind = _shape_armed_areas.pop(area_key, None)
         if shape_kind:
+            _shape_armed_changed(area_key)
             context.workspace.status_text_set(None)
             self._start_shape_draw(context, settings, shape_kind, mouse)
             return self._begin_gesture(context)
@@ -1800,6 +2014,12 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
         view = context.region.view2d
         pixel_size = abs(view.region_to_view(1, 0)[0]
                          - view.region_to_view(0, 0)[0])
+        from ..utils.gpu.gpu_shape import hit_vertex_panel_toggle
+        if hit_vertex_panel_toggle(settings, event.mouse_region_x, event.mouse_region_y):
+            from ..utils.gpu.gpu_shortcuts import toggle_collapsed
+            toggle_collapsed()
+            context.area.tag_redraw()
+            return {'CANCELLED'}
         vertex_result = self._start_shape_vertex_gesture(
             context, event, settings, mouse, pixel_size)
         if vertex_result is not None:
@@ -2048,7 +2268,7 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
         _sync_modifiers(settings, event)
         if event.type in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT',
                           'LEFT_CTRL', 'RIGHT_CTRL'}:
-            if self.drag_mode in {'ROTATE', 'TEXT_RESIZE', 'SHAPE_DRAW', 'SHAPE_VERTEX'}:
+            if self.drag_mode in {'ROTATE', 'TEXT_RESIZE'} | SHAPE_GESTURES:
                 self._update_drag(context, *self.last_mouse_pos,
                                   shift=settings.shift_is_held, ctrl=settings.ctrl_is_held)
             context.area.tag_redraw()
@@ -2087,6 +2307,9 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 return self._end(context, {'FINISHED'})
             return {'RUNNING_MODAL', 'PASS_THROUGH'}
         mouse = context.region.view2d.region_to_view(event.mouse_region_x, event.mouse_region_y)
+
+        if self.drag_mode in {'PENDING_VERTEX_BOX', 'VERTEX_BOX'}:
+            return self._modal_vertex_box(context, event, settings, mouse)
 
         if self.drag_mode == 'PENDING_BOX':
             dx = event.mouse_region_x - self.pending_region_start[0]

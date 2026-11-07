@@ -10,8 +10,29 @@ def draw_shape_properties(layout, settings, item):
     editing.prop(item, "shape_edit_vertices", text="Edit Vertices", toggle=True,
                  icon='EDITMODE_HLT')
     if item.shape_edit_vertices:
-        box.label(text="Drag a vertex or an edge  |  Ctrl+click a vertex: delete")
-    box.label(text=f"{len(item.shape_vertices)} vertices")
+        box.label(text="Click / box: select  |  drag: move  |  click edge: add")
+        selected = sum(1 for vertex in item.shape_vertices if vertex.select)
+        row = box.row(align=True)
+        row.label(text=f"{len(item.shape_vertices)} vertices, {selected} selected")
+        delete = row.row(align=True)
+        delete.enabled = selected > 0
+        delete.operator("kanvas.delete_shape_vertices", text="Delete", icon='X')
+        from ...utils.shape_geometry import HANDLE_TYPES
+        types = {item.shape_vertices[i].handle_type
+                 for i in range(len(item.shape_vertices)) if item.shape_vertices[i].select}
+        column = box.column(align=True)
+        column.enabled = selected > 0
+        column.label(text="Vertex Type (V)")
+        row = column.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
+        for identifier, label, _, icon in HANDLE_TYPES:
+            row.operator("kanvas.set_vertex_type", text=label, icon=icon,
+                         depress=types == {identifier}).kind = identifier
+    else:
+        box.label(text=f"{len(item.shape_vertices)} vertices")
+    from ...utils.shape_geometry import has_curves
+    if has_curves(item):
+        box.prop(item, "shape_curve_resolution", text="Curve Resolution")
+    box.operator("kanvas.export_shapes_svg", text="Export SVG...", icon='EXPORT')
 
     geometry = box.column(align=True)
     row = geometry.row(align=True)

@@ -34,6 +34,7 @@ UI_ACTIONS = (
     ('Focus Selection', 'FOCUS'),
     ('Mask Mode', 'MASK'),
     ('Color Mode', 'COLOR'),
+    ('Vertex Type (Edit Vertices)', 'VERTEX_TYPE'),
 )
 
 
@@ -42,7 +43,8 @@ def sync_hand_cursor():
     if _hand_item is None:
         return
     try:
-        _hand_item.active = any(
+        from .operators.ops_modal import _shape_armed_areas
+        _hand_item.active = bool(_shape_armed_areas) or any(
             tree.bl_idname == 'KanvasNodeTree'
             and tree.kanvas_settings.canvas_mode == 'MOVE'
             for tree in bpy.data.node_groups)
@@ -121,7 +123,12 @@ def rebuild():
         _items.append((km, paste))
     except (TypeError, ValueError) as exc:
         print(f"Kanvas: invalid paste shortcut: {exc}")
-    for key, direction in (('RIGHT_BRACKET', 1), ('LEFT_BRACKET', -1),
+    try:
+        connect = km.keymap_items.new('kanvas.connect_items', 'L', 'PRESS', ctrl=True)
+        _items.append((km, connect))
+    except (TypeError, ValueError) as exc:
+        print(f"Kanvas: invalid connect shortcut: {exc}")
+    for key, direction in (('RIGHT_BRACKET', 1),('LEFT_BRACKET', -1),
                            ('BACK_SLASH', 0)):
         try:
             isolate = km.keymap_items.new('kanvas.isolate_markup_region', key, 'PRESS')
@@ -131,6 +138,7 @@ def rebuild():
             print(f"Kanvas: invalid isolate shortcut {key!r}: {exc}")
     bind('MASK', 'M')
     bind('COLOR', 'C')
+    bind('VERTEX_TYPE', 'V')
     bind('F_PRESS', 'F')
     bind('F_RELEASE', 'F', value='RELEASE')
     try:

@@ -92,6 +92,8 @@ Select the item whose look you want, choose **Copy Style**, then select one or m
 
 `Shift + D` selects only the new copy and starts moving it, so the original stays in place. Duplicating an image does not create another image file.
 
+**Arrows are copied with the diagram.** When both ends of an arrow are attached to items you duplicate, the copy gets its own arrow attached to the copies, with the same label, color, thickness, and style. Arrows with a loose end, or attached to an item you did not duplicate, are not copied.
+
 ## Snapping
 
 Open the **Snap** panel. The checkbox in its header turns snapping on or off.

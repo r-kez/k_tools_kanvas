@@ -162,6 +162,25 @@ try:
         gpu_compare.draw_compare_overlay(cmp_card, None, settings, (100.0, 100.0, 500.0, 400.0))
 
     assert hasattr(bpy.ops.kanvas, 'pick_compare_side') and hasattr(bpy.ops.kanvas, 'drag_compare_divider')
+    assert hasattr(bpy.ops.kanvas, 'flip_compare')
+
+    # --- Flip A / B (operator body run directly: its poll needs a Node Editor) -----
+    from k_tools_kanvas.operators import ops_text
+    flip_op = SimpleNamespace(item_id='cmp')
+    original_get_settings = ops_text.get_settings
+    ops_text.get_settings = lambda _context: settings
+    try:
+        ctx = SimpleNamespace(area=None)
+        cmp_card.compare_a_id, cmp_card.compare_b_id = 'one', ''
+        assert ops_text.KANVAS_OT_FlipCompare.execute(flip_op, ctx) == {'FINISHED'}
+        assert (cmp_card.compare_a_id, cmp_card.compare_b_id) == ('', 'one'), 'sides swap, including empty ones'
+        ops_text.KANVAS_OT_FlipCompare.execute(flip_op, ctx)
+        assert (cmp_card.compare_a_id, cmp_card.compare_b_id) == ('one', ''), 'flipping twice restores'
+        cmp_card.compare_a_id = cmp_card.compare_b_id = ''
+        assert ops_text.KANVAS_OT_FlipCompare.execute(flip_op, ctx) == {'CANCELLED'}, 'nothing to swap'
+        assert ops_text.KANVAS_OT_FlipCompare.execute(SimpleNamespace(item_id='nope'), ctx) == {'CANCELLED'}
+    finally:
+        ops_text.get_settings = original_get_settings
     print('COMPARE CARD OK')
 finally:
     addon.unregister()

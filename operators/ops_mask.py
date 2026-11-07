@@ -11,6 +11,8 @@ from gpu_extras.batch import batch_for_shader
 from .kanvas_context import KanvasTreeOnly
 from ..utils.arrow_geometry import image_uv_at, image_point_from_uv
 from ..utils.gpu.gpu_theme import draw_rounded_fill, draw_rounded_border
+from ..utils.gpu.gpu_shortcuts import (
+    BADGE_ALERT, BADGE_NORMAL, PANEL_STATE, draw_mode_badge, draw_shortcut_panel)
 from ..utils.kanvas_data import get_settings
 
 
@@ -103,6 +105,9 @@ def _effective_mask_erase(item, alt_held=False):
 
 
 _TOOL_TITLES = {'AUTO': 'Auto Select'}
+
+# Shared by Mask and Color modes; survives between edit sessions.
+_shortcut_panel = PANEL_STATE
 
 
 def _mask_indicator_text(item, alt_held=False, mode_name='MASK MODE', sample_held=False):
@@ -289,6 +294,8 @@ class MaskPainterMixin:
         self._rectangle_centered = False
         self._alt_held = bool(event.alt)
         self._held_alt_keys = set()
+        self._shortcut_toggle = None
+        self._shortcut_toggle_pressed = False
         self._last_tool = item.mask_tool
         if self._in_canvas(event):
             self._mouse_uv(event, item)
@@ -755,63 +762,25 @@ class MaskPainterMixin:
         title = _mask_indicator_text(
             item, alt_held, getattr(self, '_mode_label', 'Mask Mode').upper(),
             sample_held=sample_held)
-        blf.size(0, 13)
-        width = blf.dimensions(0, title)[0] + 28
-        height = 31
-        left = (region.width - width) * 0.5
-        bottom = region.height - height - 10
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        previous_blend = gpu.state.blend_get()
-        gpu.state.blend_set('ALPHA')
-        try:
-            bounds = (left, bottom, left + width, bottom + height)
-            draw_rounded_fill(shader, bounds, 6, (0.055, 0.075, 0.095, 0.88))
-            draw_rounded_border(shader, bounds, 6, 1,
-                                (0.30, 0.70, 0.85, 0.55))
-            blf.color(0, *((1.0, 0.48, 0.32, 1.0) if _effective_mask_erase(item, alt_held)
-                           else (0.4, 0.86, 1.0, 1.0)))
-            blf.position(0, left + 14, bottom + 9, 0)
-            blf.draw(0, title)
-        finally:
-            gpu.state.blend_set(previous_blend)
+        draw_mode_badge(region, title, BADGE_ALERT if _effective_mask_erase(item, alt_held)
+                        else BADGE_NORMAL, self._area)
 
     def _draw_shortcut_list(self, item, region):
         compact = region.height < 320 or region.width < 500
         rows = _mask_shortcut_rows(
             item, compact, getattr(item, '_is_markup', False))
-        font_size = 11 if region.width < 380 else 12
-        blf.size(0, font_size)
-        key_width = max(blf.dimensions(0, key)[0] for key, _ in rows)
-        description_width = max(blf.dimensions(0, label)[0] for _, label in rows)
-        width = key_width + description_width + 43
-        height = len(rows) * 19 + 18
-        left = 14
-        bottom = 14
-        for panel in self._area.regions:
-            if (panel.type != 'WINDOW' and panel.width > 1 and panel.height > 1
-                    and panel.x <= region.x + left < panel.x + panel.width
-                    and panel.y <= region.y + bottom < panel.y + panel.height):
-                left = max(left, panel.x + panel.width - region.x + 12)
-        if left + width > region.width - 10 or bottom + height > region.height - 46:
-            return
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        previous_blend = gpu.state.blend_get()
-        gpu.state.blend_set('ALPHA')
-        try:
-            bounds = (left, bottom, left + width, bottom + height)
-            draw_rounded_fill(shader, bounds, 7, (0.045, 0.06, 0.075, 0.86))
-            key_x = left + 12
-            description_x = key_x + key_width + 17
-            for index, (key, description) in enumerate(rows):
-                y = bottom + height - 22 - index * 19
-                blf.color(0, 0.38, 0.83, 1.0, 1.0)
-                blf.position(0, key_x, y, 0)
-                blf.draw(0, key)
-                blf.color(0, 0.96, 0.97, 0.98, 1.0)
-                blf.position(0, description_x, y, 0)
-                blf.draw(0, description)
-        finally:
-            gpu.state.blend_set(previous_blend)
+        self._shortcut_toggle = draw_shortcut_panel(self._area, region, rows)
+
+    def _shortcut_toggle_hit(self, event):
+        bounds = getattr(self, '_shortcut_toggle', None)
+        if bounds is None:
+            return False
+        region = self._window_region()
+        if region is None:
+            return False
+        x = event.mouse_x - region.x
+        y = event.mouse_y - region.y
+        return bounds[0] <= x <= bounds[2] and bounds[1] <= y <= bounds[3]
 
     def _draw_polygon_cursor_icon(self, item, region):
         uv = self._polygon_cursor_uv
@@ -864,7 +833,7 @@ class MaskPainterMixin:
             shader.uniform_float('color', color)
             if len(points) > 1:
                 batch_for_shader(shader, 'LINE_STRIP', {'pos': points}).draw(shader)
-            if len(self._polygon_vertices) >= 3 and self._polygon_cursor_uv is not None:
+            if len(self._polygon_vertices) >= 2 and self._polygon_cursor_uv is not None:
                 shader.uniform_float('color', (*color[:3], 0.4))
                 batch_for_shader(shader, 'LINES', {'pos': (points[-1], points[0])}).draw(shader)
             gpu.state.point_size_set(6.0)
@@ -1039,6 +1008,19 @@ class MaskPainterMixin:
             self._alt_held = bool(self._held_alt_keys)
         else:
             self._alt_held = bool(event.alt)
+        if event.type == 'LEFTMOUSE' and self._shortcut_toggle_hit(event):
+            if event.value in {'PRESS', 'DOUBLE_CLICK'}:
+                _shortcut_panel['collapsed'] = not _shortcut_panel['collapsed']
+                self._shortcut_toggle_pressed = True
+                self._area.tag_redraw()
+            if event.value in {'PRESS', 'DOUBLE_CLICK'} or self._shortcut_toggle_pressed:
+                if event.value == 'RELEASE':
+                    self._shortcut_toggle_pressed = False
+                return {'RUNNING_MODAL'}
+        elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE' \
+                and getattr(self, '_shortcut_toggle_pressed', False):
+            self._shortcut_toggle_pressed = False
+            return {'RUNNING_MODAL'}
         tool = item.mask_tool
         if tool != getattr(self, '_last_tool', 'BRUSH'):
             self._commit_stroke(item)

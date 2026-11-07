@@ -70,10 +70,27 @@ class KANVAS_OT_HandCursor(bpy.types.Operator):
         region = getattr(context, 'region', None)
         return (tree is not None and tree.bl_idname == 'KanvasNodeTree'
                 and region is not None and region.type == 'WINDOW'
-                and tree.kanvas_settings.canvas_mode == 'MOVE')
+                and (tree.kanvas_settings.canvas_mode == 'MOVE'
+                     or cls._shape_armed(context)))
+
+    @staticmethod
+    def _shape_armed(context):
+        from .ops_modal import _shape_armed_areas
+        return (context.window.as_pointer(),
+                context.area.as_pointer()) in _shape_armed_areas
 
     def invoke(self, context, event):
         from .ops_modal import _event_in_canvas
-        if _event_in_canvas(context, event):
+        from ..utils.gpu import gpu_shape_cursor
+        inside = _event_in_canvas(context, event)
+        key = gpu_shape_cursor.area_key(context.window, context.area)
+        if self._shape_armed(context):
+            if inside:
+                gpu_shape_cursor.positions[key] = (event.mouse_region_x,
+                                                   event.mouse_region_y)
+            else:
+                gpu_shape_cursor.positions.pop(key, None)
+            context.area.tag_redraw()
+        if inside and context.space_data.edit_tree.kanvas_settings.canvas_mode == 'MOVE':
             context.window.cursor_set('HAND')
         return {'PASS_THROUGH'}
