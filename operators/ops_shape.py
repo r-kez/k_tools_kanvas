@@ -715,7 +715,8 @@ def import_svg_shapes(context, settings, text, center, target_size=0.0):
         return (center[0] + (point[0] - middle[0]) * scale,
                 center[1] + (point[1] - middle[1]) * scale)
 
-    shapes, skipped = [], 0
+    # Keep ids, not items: adding to the collection can move earlier items in memory.
+    created, skipped = [], 0
     for outline in outlines:
         segments = [tuple(place(p) for p in segment) for segment in outline['segments']]
         records = outline_records(segments, eps=1e-6 * max(1.0, span * scale))
@@ -723,14 +724,15 @@ def import_svg_shapes(context, settings, text, center, target_size=0.0):
             skipped += 1
             continue
         outline = dict(outline, stroke_width=outline['stroke_width'] * scale)
-        shapes.append(shape_from_outline(context, settings, records, outline,
-                                         outline['name'] or 'SVG Shape'))
+        created.append(shape_from_outline(context, settings, records, outline,
+                                          outline['name'] or 'SVG Shape').item_id)
+    wanted = set(created)
     for item in settings.images:
-        item.is_selected = any(item.item_id == shape.item_id for shape in shapes)
-    if shapes:
-        settings.active_image_index = next(
-            i for i, item in enumerate(settings.images) if item.item_id == shapes[-1].item_id)
-    return shapes, skipped
+        item.is_selected = item.item_id in wanted
+    by_id = {item.item_id: (i, item) for i, item in enumerate(settings.images)}
+    if created:
+        settings.active_image_index = by_id[created[-1]][0]
+    return [by_id[item_id][1] for item_id in created], skipped
 
 
 def _selected_shapes(settings):

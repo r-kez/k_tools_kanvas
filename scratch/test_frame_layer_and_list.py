@@ -99,6 +99,9 @@ try:
     area.ui_type = 'KanvasNodeTree'
     area.spaces.active.node_tree = tree
     region = next(region for region in area.regions if region.type == 'WINDOW')
+    import gpu
+    if hasattr(gpu, 'init'):
+        gpu.init()   # Blender 5.2 can draw without a window once the gpu module is started
     calls = []
     original_draw_text_label = gpu_module.draw_text_label
     gpu_module.draw_text_label = lambda item, region, *args: calls.append(item.name)

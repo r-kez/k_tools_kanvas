@@ -25,6 +25,14 @@ area.spaces.active.node_tree = tree
 region = next(region for region in area.regions if region.type == 'WINDOW')
 settings = tree.kanvas_settings
 
+
+def by_image(name):
+    """Look an item up again: adding to a collection can move it in memory, which
+    leaves older Python references dangling (writing through one crashes Blender 5.2)."""
+    return next(item for item in settings.images
+                if item.image_data and item.image_data.name == name)
+
+
 with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.active):
     for name, position, size in [('A', (-150, 20), (100, 80)), ('B', (190, 160), (60, 40))]:
         image = bpy.data.images.new(name, width=size[0], height=size[1])
@@ -42,24 +50,45 @@ with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.
     middle.item_type = 'IMAGE'
     middle.image_data = bpy.data.images.new('Distribution', 30, 50)
     middle.is_selected = True
+    a, b = by_image('A'), by_image('B')
     a.location = (-250, 0)
     b.location = (250, 20)
     middle.location = (0, 10)
     left_anchor, right_anchor = tuple(a.location), tuple(b.location)
-    assert bpy.ops.kanvas.distribute_items(axis='HORIZONTAL') == {'FINISHED'}
+    middle_y = middle.location[1]
+    # Align Centers off: the outer items stay exactly where they are.
+    assert bpy.ops.kanvas.distribute_items(axis='HORIZONTAL', align_centers=False) == {'FINISHED'}
     gap_left = item_bounds(middle)[0] - item_bounds(a)[2]
     gap_right = item_bounds(b)[0] - item_bounds(middle)[2]
     assert abs(gap_left - gap_right) < 0.001
     assert tuple(a.location) == left_anchor and tuple(b.location) == right_anchor
+    assert middle.location[1] == middle_y, 'the other axis is left alone'
+    # Align Centers on (the default, see docs/arranging.md): the outer items keep their
+    # place along the distribution axis, and every center lines up on the other one.
+    a.location, b.location = left_anchor, right_anchor
+    middle.location = (0, 10)
+    assert bpy.ops.kanvas.distribute_items(axis='HORIZONTAL') == {'FINISHED'}
+    assert a.location[0] == left_anchor[0] and b.location[0] == right_anchor[0]
+    gap_left = item_bounds(middle)[0] - item_bounds(a)[2]
+    gap_right = item_bounds(b)[0] - item_bounds(middle)[2]
+    assert abs(gap_left - gap_right) < 0.001
+    centers_y = [(item_bounds(item)[1] + item_bounds(item)[3]) / 2 for item in (a, b, middle)]
+    assert max(centers_y) - min(centers_y) < 0.001, centers_y
     a.location[1], b.location[1], middle.location[1] = -250, 250, 0
     assert bpy.ops.kanvas.distribute_items(axis='VERTICAL') == {'FINISHED'}
     gap_bottom = item_bounds(middle)[1] - item_bounds(a)[3]
     gap_top = item_bounds(b)[1] - item_bounds(middle)[3]
     assert abs(gap_bottom - gap_top) < 0.001
     a.location[0], b.location[0], middle.location[0] = -10, 30, 0
-    before = [tuple(item.location) for item in (a, b, middle)]
-    assert bpy.ops.kanvas.distribute_items(axis='HORIZONTAL') == {'CANCELLED'}
-    assert [tuple(item.location) for item in (a, b, middle)] == before
+    # Overlapping items are spread out with a 20 unit gap, in their order, around the
+    # same center (they used to be refused).
+    order = sorted((a, b, middle), key=lambda item: (item_bounds(item)[0] + item_bounds(item)[2]) / 2)
+    span_before = (min(item_bounds(i)[0] for i in order), max(item_bounds(i)[2] for i in order))
+    assert bpy.ops.kanvas.distribute_items(axis='HORIZONTAL', align_centers=False) == {'FINISHED'}
+    gaps = [item_bounds(order[i + 1])[0] - item_bounds(order[i])[2] for i in range(2)]
+    assert all(abs(gap - 20.0) < 0.001 for gap in gaps), gaps
+    span_after = (item_bounds(order[0])[0], item_bounds(order[2])[2])
+    assert abs(sum(span_after) - sum(span_before)) < 0.001, 'same center'
     settings.images.remove(2)
 
     assert bpy.ops.kanvas.create_text(location=(70, 70)) == {'FINISHED'}
@@ -101,6 +130,7 @@ with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.
     assert bpy.ops.kanvas.remove_text_line(index=1) == {'FINISHED'}
     assert len(duplicate.text_lines) == 1 and len(card.text_lines) == 2
     duplicate.is_selected = True
+    a = by_image('A')
     a.is_selected = True
     assert bpy.ops.kanvas.align_items(mode='LEFT') == {'FINISHED'}
     assert abs(item_bounds(a)[0] - item_bounds(duplicate)[0]) < 0.001

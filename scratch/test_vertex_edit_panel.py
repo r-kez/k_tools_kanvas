@@ -36,7 +36,10 @@ try:
         shape.is_locked = True
         assert gpu_shape.vertex_edit_shape(settings) is None
         shape.is_locked = False
+        shape_id = shape.item_id
         assert bpy.ops.kanvas.create_text(location=(900, 0)) == {'FINISHED'}
+        # Adding an item can move the collection in memory: look the shape up again.
+        shape = next(item for item in settings.images if item.item_id == shape_id)
         for item in settings.images:
             item.is_selected = True
         assert gpu_shape.vertex_edit_shape(settings) is None, 'two selected items: not editing'

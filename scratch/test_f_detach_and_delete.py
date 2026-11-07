@@ -37,6 +37,17 @@ try:
         def _end(self, context, result):
             return result
 
+    def select_only(target):
+        """What a click on an unselected item does: it becomes the only selection.
+
+        create_frame leaves the new frame selected, and a drag moves every selected
+        item, so without this the frame would move along with the image.
+        """
+        for entry in settings.images:
+            entry.is_selected = entry.item_id == target.item_id if target.item_id else entry == target
+        settings.active_image_index = next(i for i, entry in enumerate(settings.images)
+                                           if entry.name == target.name)
+
     with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.active):
         from k_tools_kanvas.operators import ops_modal
         ops_modal.get_prefs = lambda: SimpleNamespace(
@@ -76,8 +87,7 @@ try:
         print(f"Initial frame width with 2 images: {init_frame_w}")
 
         # Drag item1
-        item1.is_selected = True
-        item2.is_selected = False
+        select_only(item1)
         g1 = Gesture()
         g1.action = 'CLICK'
         g1.start_drag(bpy.context, item1, 'MOVE', (0, 0))
@@ -117,6 +127,7 @@ try:
         orig_frame_w, orig_frame_h = frame.frame_width, frame.frame_height
         print(f"Single image initial frame loc={orig_frame_loc}, size=({orig_frame_w}, {orig_frame_h})")
 
+        select_only(single_img)
         g2 = Gesture()
         g2.action = 'CLICK'
         g2.start_drag(bpy.context, single_img, 'MOVE', (0, 0))
@@ -152,6 +163,7 @@ try:
         item_a = next(it for it in settings.images if it.name == "ItemA")
 
         # Simulate user holding F (F key was pressed down)
+        select_only(item_a)
         settings.f_is_held = True
         g3 = Gesture()
         g3.start_drag(bpy.context, item_a, 'MOVE', (0, 0))
@@ -282,13 +294,16 @@ try:
                                     shift=False, ctrl=False, alt=False)
         res_del = g_del.invoke(bpy.context, event_del)
         assert res_del == {'CANCELLED'}, f"DELETE action on FRAME must invoke remove_image, got {res_del}"
+        assert not any(it.item_type == 'FRAME' for it in settings.images), 'the frame was deleted'
         print("DELETE action invocation on Frame verified!")
 
+        # f_item points at a removed entry now: never write to it again (the new card
+        # can reuse its memory, and the write would deselect the card).
+        del f_item
         card_item = settings.images.add()
         card_item.item_type = 'TEXT'
         card_item.name = "C1"
         card_item.is_selected = True
-        f_item.is_selected = False
         res_card_del = g_del.invoke(bpy.context, event_del)
         assert res_card_del == {'CANCELLED'}, f"DELETE action on TEXT must invoke remove_image, got {res_card_del}"
         print("DELETE action invocation on Text Card verified!")

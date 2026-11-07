@@ -253,8 +253,11 @@ try:
         assert len(shape.shape_vertices) == before - 2
 
         # A click on another item still selects it, and leaving the mode drops the selection.
+        shape_id = shape.item_id
         assert bpy.ops.kanvas.create_text(location=(900.0, 0.0)) == {'FINISHED'}
         card = settings.images[-1]
+        # Adding an item can move the collection in memory: look the shape up again.
+        shape = next(item for item in settings.images if item.item_id == shape_id)
         for item in settings.images:
             item.is_selected = item.item_id == shape.item_id
         settings.active_image_index = 0

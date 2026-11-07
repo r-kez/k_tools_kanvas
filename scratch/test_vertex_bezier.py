@@ -244,6 +244,7 @@ try:
 
         # Duplicate copies the vertex types and handles.
         records = vertex_records(shape)
+        shape_id = shape.item_id
         for item in settings.images:
             item.is_selected = item.item_id == shape.item_id
         settings.active_image_index = 0
@@ -251,6 +252,8 @@ try:
         copies = [item for item in settings.images
                   if item.item_type == 'SHAPE' and item.item_id != shape.item_id]
         assert copies and vertex_records(copies[0]) == records
+        # Adding an item can move the collection in memory: look the shape up again.
+        shape = next(item for item in settings.images if item.item_id == shape_id)
 
         # The operator and the V menu.
         for item in settings.images:
