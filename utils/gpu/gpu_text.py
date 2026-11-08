@@ -92,7 +92,9 @@ def hit_test_text_resize(item, position, view_pixel_size):
             and bottom - handle * 0.3 <= y <= bottom + handle)
 
 
-def draw_text_card(item, view_pixel_size=1.0, region=None):
+def draw_text_card(item, view_pixel_size=1.0, region=None, grip=True):
+    """The card itself; `grip` draws the resize grip in its corner (left out of an
+    exported picture: it is a handle, not part of the board)."""
     if region is None:
         left, bottom, right, top = item_bounds(item)
     else:
@@ -100,7 +102,7 @@ def draw_text_card(item, view_pixel_size=1.0, region=None):
         view_pixel_size = 1.0
     if studio_enabled():
         _draw_studio_text_card(item, left, bottom, right, top, view_pixel_size,
-                               (right - left) / item.text_width if region else 1.0)
+                               (right - left) / item.text_width if region else 1.0, grip)
         return
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     old_blend = gpu.state.blend_get()
@@ -131,7 +133,7 @@ def draw_text_card(item, view_pixel_size=1.0, region=None):
         shader.uniform_float('color', (0.0, 0.8, 1.0, 1.0) if item.is_selected
                              else (*item.text_color, 0.45))
         border.draw(shader)
-        if right - left >= 48 * view_pixel_size and top - bottom >= 48 * view_pixel_size:
+        if grip and right - left >= 48 * view_pixel_size and top - bottom >= 48 * view_pixel_size:
             inset = min(14 * view_pixel_size, (right - left) * 0.18,
                         (top - bottom) * 0.18)
             pad = min(4 * view_pixel_size, inset * 0.3)
@@ -147,7 +149,7 @@ def draw_text_card(item, view_pixel_size=1.0, region=None):
         gpu.state.blend_set(old_blend)
 
 
-def _draw_studio_text_card(item, left, bottom, right, top, pixel_size, scale):
+def _draw_studio_text_card(item, left, bottom, right, top, pixel_size, scale, grip=True):
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     old_blend = gpu.state.blend_get()
     gpu.state.blend_set('ALPHA')
@@ -181,7 +183,7 @@ def _draw_studio_text_card(item, left, bottom, right, top, pixel_size, scale):
             draw_rounded_fill(shader, (strip_left, strip_top - 2 * scale,
                                        strip_right, strip_top), scale,
                               (*accent[:3], 0.82 if item.is_selected else 0.48))
-        if right - left >= 48 * scale and top - bottom >= 48 * scale:
+        if grip and right - left >= 48 * scale and top - bottom >= 48 * scale:
             inset = min(14 * scale, (right - left) * 0.18, (top - bottom) * 0.18)
             pad = min(4 * scale, inset * 0.3)
             grip = batch_for_shader(shader, 'LINES', {'pos': [

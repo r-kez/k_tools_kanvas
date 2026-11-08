@@ -170,6 +170,8 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             layout.operator("kanvas.paste_style", icon='PASTEDOWN', text="Paste Style")
             layout.operator("kanvas.remove_image", icon='TRASH', text=f"Delete ({n_sel})")
             layout.separator()
+            layout.operator_context = 'INVOKE_DEFAULT'
+            layout.operator("kanvas.export_board_image", icon='IMAGE_DATA', text="Export Image...")
             layout.menu("KANVAS_MT_add_content", text="Add", icon='ADD')
 
         else:
@@ -177,3 +179,8 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             layout.label(text="Kanvas", icon='IMAGE_DATA')
             layout.separator()
             draw_kanvas_add_entries(layout)
+            if settings.images or settings.arrows:
+                layout.separator()
+                layout.operator_context = 'INVOKE_DEFAULT'
+                layout.operator("kanvas.export_board_image", icon='IMAGE_DATA',
+                                text="Export Image...")

@@ -597,17 +597,29 @@ def _draw_callback_px(*args):
     except Exception:
         return
 
-    tree = context.space_data.edit_tree
+    draw_board(settings, view_bounds, view_pixel_size, region,
+               space=context.space_data, frame_number=context.scene.frame_current)
+
+
+def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame_number=0,
+               export=False):
+    """Everything of the board drawn in view space (POST_VIEW), for the canvas and for
+    an exported image (`utils/board_render.py`). With `export`, what belongs to the
+    interface stays out: the canvas background, the axes, snap guides, the drop
+    highlight, selection outlines and handles, the ghost of an image whose mask is
+    being edited and the greying of the editing focus. `region` may be a stand-in
+    with `width`, `height` and `view2d`."""
 
 
 
-    try:
-        draw_canvas_backdrop(view_bounds, view_pixel_size)
-    except Exception as exc:
-        print(f"Kanvas canvas background: {exc}")
+    if not export:
+        try:
+            draw_canvas_backdrop(view_bounds, view_pixel_size)
+        except Exception as exc:
+            print(f"Kanvas canvas background: {exc}")
 
     # The axes form the bottom layer of the Kanvas items.
-    if settings.show_debug_grid:
+    if settings.show_debug_grid and not export:
         try:
             draw_axes(view_bounds)
         except Exception:
@@ -617,12 +629,13 @@ def _draw_callback_px(*args):
     for _, frame in visible_frames_in_draw_order(settings):
         try:
             draw_kanvas_frame(frame, view_pixel_size,
-                              highlight=(settings.drop_target_frame == frame.frame_node_name),
+                              highlight=(not export
+                                         and settings.drop_target_frame == frame.frame_node_name),
                               allow_resize=not frame_has_content(settings, frame.frame_node_name))
         except Exception:
             pass
 
-    if settings.show_snap_viz_x or settings.show_snap_viz_y:
+    if (settings.show_snap_viz_x or settings.show_snap_viz_y) and not export:
         try:
             draw_snap_guides(settings, view_bounds=view_bounds)
         except Exception:
@@ -636,7 +649,7 @@ def _draw_callback_px(*args):
     # Images and shapes share one stack: draw them together, back to front.
     from .gpu_shape import draw_shape_body
     from .gpu_focus import saturation_scale
-    faded = saturation_scale(settings)   # other images greyed out while editing
+    faded = None if export else saturation_scale(settings)   # greyed out while editing
     for image_index in layer_draw_indices(settings):
         img_item = settings.images[image_index]
         if img_item.item_type == 'SHAPE':
@@ -673,7 +686,7 @@ def _draw_callback_px(*args):
             saturation = img_item.saturation
             if faded is not None and img_item.item_id != faded[0]:
                 saturation *= faded[1]
-            if img_item.mask_editing:
+            if img_item.mask_editing and not export:
                 tex.draw(
                     img_item.location, final_scale, img_item.shear_xy,
                     img_item.rotation, img_item.opacity * 0.22,
@@ -716,6 +729,14 @@ def _draw_callback_px(*args):
                 draw_compare_content(card, settings, view_pixel_size)
             except Exception as exc:
                 print(f"Kanvas comparison: {exc}")
+
+    if export:
+        # The rest is selection, handles and the drag box: interface, not board.
+        draw_checklist_links(settings, view_pixel_size, region)
+        draw_arrows(settings, view_pixel_size)
+        if space is not None:
+            draw_canvas_annotations(space, frame_number)
+        return
 
     # Selection outlines and vertex handles of shapes go above every layer.
     try:
@@ -786,7 +807,8 @@ def _draw_callback_px(*args):
 
     # Native canvas strokes were drawn before POST_VIEW; restore them above
     # Kanvas images. Blender draws its in-progress paint buffer later itself.
-    draw_canvas_annotations(context.space_data, context.scene.frame_current)
+    if space is not None:
+        draw_canvas_annotations(space, frame_number)
 
     prune_texture_cache()
 
@@ -832,12 +854,21 @@ def _draw_frame_labels():
     if region is None or scene is None:
         return
     settings = get_settings(context)
-    try:
-        from . import gpu_shape_cursor
-        if gpu_shape_cursor.is_active():
-            gpu_shape_cursor.draw_shape_cursor(region)
-    except Exception as exc:
-        print(f"Kanvas shape cursor: {exc}")
+    draw_board_labels(settings, region, area=context.area)
+
+
+def draw_board_labels(settings, region, area=None, export=False):
+    """Everything of the board drawn in region pixels (POST_PIXEL): frame titles,
+    text cards, arrow, shape and color names. With `export`, the interface stays out
+    (the shape cursor, edit buttons, handles, the editing focus, badges, the mode
+    switch, the recenter button and the drag box)."""
+    if not export:
+        try:
+            from . import gpu_shape_cursor
+            if gpu_shape_cursor.is_active():
+                gpu_shape_cursor.draw_shape_cursor(region)
+        except Exception as exc:
+            print(f"Kanvas shape cursor: {exc}")
     # Arrow geometry is behind text in POST_VIEW; its labels follow the same
     # order in POST_PIXEL so card and frame text remain readable.
     draw_arrow_labels(settings, region)
@@ -957,8 +988,10 @@ def _draw_frame_labels():
             except Exception as exc:
                 print(f"Kanvas comparison: {exc}")
             continue
-        draw_text_card(text_item, region=region)
+        draw_text_card(text_item, region=region, grip=not export)
         draw_text_label(text_item, region)
+        if export:
+            continue
         from .gpu_common import get_prefs
         prefs = get_prefs()
         if prefs is None or getattr(prefs, 'show_text_edit_button', True):
@@ -969,6 +1002,8 @@ def _draw_frame_labels():
         draw_markup_labels(settings, region, card_rects)
     except Exception as exc:
         print(f"Kanvas color names: {exc}")
+    if export:
+        return  # the rest is handles, focus, badges and buttons: interface
     draw_text_anchor_handles(settings, region)
     # Editing focus: everything drawn so far is dimmed around the edited item; the
     # mode badges and panels below stay bright.
@@ -979,13 +1014,13 @@ def _draw_frame_labels():
         print(f"Kanvas editing focus: {exc}")
     try:
         from .gpu_shape import draw_vertex_edit_overlay
-        draw_vertex_edit_overlay(settings, context.area, region)
+        draw_vertex_edit_overlay(settings, area, region)
     except Exception as exc:
         print(f"Kanvas vertex edit overlay: {exc}")
     from .gpu_mode_switch import draw_mode_switch
-    draw_mode_switch(settings, context.area, region)
+    draw_mode_switch(settings, area, region)
     from ...operators.ops_focus import recenter_prompt
-    prompt = recenter_prompt(settings, context.area, region)
+    prompt = recenter_prompt(settings, area, region)
     if prompt is not None:
         draw_recenter_prompt(prompt)
     # POST_PIXEL runs after the canvas cards, so the active drag box stays

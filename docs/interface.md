@@ -97,6 +97,7 @@ Right-click an item to open the **Kanvas** menu. Its entries depend on the selec
 - **Reset Transform:** location, scale, or rotation.
 - **Edit:** duplicate, **Copy Style**, **Paste Style**, or delete.
 - **Add:** the same entries as the **Add** menu.
+- **Export Image...:** save a PNG of the selection, the board or the view (see [Exporting a picture](export-image.md)).
 
 ## Hover cursor and feedback
 
