@@ -49,6 +49,8 @@ def ensure_unique_tree_annotations():
     for tree in bpy.data.node_groups:
         if tree.bl_idname == 'KanvasNodeTree':
             ensure_unique_tree_annotation(tree)
+    from .shape_gradient import unshare_ramps
+    unshare_ramps()
 
 
 def _copy_properties(source, target, excluded=()):

@@ -36,6 +36,46 @@ def _plain_text(content):
                      if line.strip())
 
 
+def _move_to(settings, first_index, center):
+    """Shift the items added from first_index on so their middle lands on center."""
+    if center is None:
+        return
+    from ..utils.item_geometry import item_bounds
+    added = [settings.images[i] for i in range(first_index, len(settings.images))]
+    boxes = [box for box in (item_bounds(item) for item in added) if box]
+    if not boxes:
+        return
+    dx = center[0] - (min(b[0] for b in boxes) + max(b[2] for b in boxes)) * 0.5
+    dy = center[1] - (min(b[1] for b in boxes) + max(b[3] for b in boxes)) * 0.5
+    for item in added:
+        item.location = (item.location[0] + dx, item.location[1] + dy)
+
+
+def _group_added(context, settings, first_index, name):
+    """Group the items added from first_index on, locked ones included, named `name`."""
+    from .ops_group import group_selection
+    added = [settings.images[i].item_id for i in range(first_index, len(settings.images))]
+    if len(added) < 2:
+        return None
+    locked = {item.item_id for item in settings.images
+              if item.item_id in added and item.is_locked}
+    with suspend_selection_updates():
+        for item in settings.images:
+            item.is_selected = item.item_id in added
+            if item.item_id in locked:
+                item.is_locked = False   # grouping skips locked items
+    try:
+        group_id = group_selection(context, settings)
+    finally:
+        for item in settings.images:
+            if item.item_id in locked:
+                item.is_locked = True
+    group = next((item for item in settings.images if item.item_id == group_id), None)
+    if group is not None:
+        group.name = unique_item_name(settings, name)
+    return group
+
+
 class KANVAS_OT_ImportPureRef(KanvasTreeOnly, bpy.types.Operator, ImportHelper):
     bl_idname = 'kanvas.import_pureref'
     bl_label = 'Import PureRef Scene'
@@ -44,6 +84,18 @@ class KANVAS_OT_ImportPureRef(KanvasTreeOnly, bpy.types.Operator, ImportHelper):
 
     filename_ext = '.pur'
     filter_glob: bpy.props.StringProperty(default='*.pur', options={'HIDDEN'})
+    group: bpy.props.BoolProperty(  # type: ignore
+        name='Group', default=True,
+        description='Group the imported items, named after the file, so the board moves as one')
+
+    def invoke(self, context, event):
+        if self.filepath:
+            # Dropped on the board: the scene lands where the pointer is.
+            from .ops_image import drop_location
+            self._drop_center = drop_location(context, event)
+            return self.execute(context)
+        self._drop_center = None
+        return ImportHelper.invoke(self, context, event)
 
     def execute(self, context):
         try:
@@ -139,6 +191,7 @@ class KANVAS_OT_ImportPureRef(KanvasTreeOnly, bpy.types.Operator, ImportHelper):
                         item.opacity = record.opacity
                         item.z_index = base_z + record.z_index
                         item.is_locked = record.locked
+                    _move_to(settings, first_index, getattr(self, '_drop_center', None))
                     for item in settings.images:
                         item.is_selected = False
                     active_index = -1
@@ -148,6 +201,8 @@ class KANVAS_OT_ImportPureRef(KanvasTreeOnly, bpy.types.Operator, ImportHelper):
                             item.is_selected = True
                             active_index = index
                     settings.active_image_index = active_index
+                if self.group:
+                    _group_added(context, settings, first_index, Path(self.filepath).stem)
             tree.use_fake_user = True
         except Exception as exc:
             with suspend_selection_updates():
@@ -166,7 +221,8 @@ class KANVAS_OT_ImportPureRef(KanvasTreeOnly, bpy.types.Operator, ImportHelper):
 
         if context.area:
             context.area.tag_redraw()
-        imported_texts = len(settings.images) - first_index - len(scene.images)
+        imported_texts = sum(settings.images[i].item_type == 'TEXT'
+                             for i in range(first_index, len(settings.images)))
         image_word = 'image' if len(scene.images) == 1 else 'images'
         note_word = 'note' if imported_texts == 1 else 'notes'
         if scene.skipped:

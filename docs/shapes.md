@@ -116,7 +116,7 @@ In **Edit Vertices**, every contour is edited like a shape of its own: adding a 
 
 | Option | What it does |
 | --- | --- |
-| **Fill** | Turns the fill on or off, with its color and opacity |
+| **Fill** | Turns the fill on or off, with its color and opacity. **Solid**, **Linear** or **Radial** below it picks one color or a [gradient](#gradients) |
 | **Outline** | Turns the line on or off, with its color, width, and style (solid, dashed, dotted) |
 | **Join** | How the line turns at corners: **Round** (the default), **Miter** (sharp; very sharp corners are cut off) or **Bevel** (cut off straight) |
 | **Ends** | How the ends of an open path and of each dash look: **Round** (the default), **Flat** (cut off at the end point) or **Square** (cut off half the line width further). Dots always stay round. |
@@ -127,6 +127,18 @@ In **Edit Vertices**, every contour is edited like a shape of its own: adding a 
 The defaults look exactly as shapes always did.
 
 Fill and outline cannot both be off, so a shape never disappears: while one is off, the other stays on.
+
+### Gradients
+
+Choose **Linear** or **Radial** under **Fill** (closed shapes only). The first time, the gradient goes from the fill color to clear; after that the shape keeps its own gradient, even while you switch back to **Solid** and again.
+
+| Option | What it does |
+| --- | --- |
+| **Colors** | Blender's color ramp: click a stop to pick it, drag it to move it, and set its color and opacity below the ramp; `+` and `-` add and remove stops, and the menu next to them flips the ramp. **Interpolation** (Linear, Ease, Constant, B-Spline, Cardinal) and the color mode (RGB, HSV, HSL) work as in the rest of Blender. |
+| **Spread** | What lies past the ends: **Pad** keeps the end colors, **Reflect** repeats the gradient mirrored each time, **Repeat** starts it again |
+| **Start / End** | Where a linear gradient starts and ends; for a radial one, its **Center** and a point on its **Edge**. Both are measured in the shape's box, from -0.5 to 0.5 on each axis, so the gradient moves, turns and scales with the shape. **Turn 90°** turns it around its middle (a radial one around its center), **Reset** puts it back across the whole shape. |
+
+The **Fill** opacity applies on top of the stops' own opacity. A radial gradient stays round on a stretched shape. Editing vertices, combining, separating or cutting shapes leaves the gradient where it was on the canvas. Duplicates and **Copy Style** / **Paste Style** carry the gradient, each shape with colors of its own. The colors are kept in a hidden texture that belongs to the shape (Blender keeps a color ramp only inside a datablock); it is saved with the board and goes away with the shape. A shape whose gradient was made before the color ramp shows **Edit Colors**, which turns its stops into a ramp. If the graphics driver cannot run the gradient drawing, the shape is filled with the gradient's average color instead.
 
 **Copy Style** and **Paste Style** in the context menu copy this appearance to other shapes. **Flip H** and **Flip V** in the **Selection** panel mirror the shape inside its box; arrows attached to it follow.
 
@@ -166,9 +178,11 @@ Everything is named after the file: a single shape takes its name (`logo`), seve
 
 Kanvas fills with the even-odd rule. A path with `fill-rule="nonzero"` (the SVG default) usually draws its holes wound the other way round, and those come in as holes. A contour inside another one and wound the same way would not be a hole under `nonzero`, so it comes in as a separate shape on top, named with a number after the `id`.
 
-What does not carry over: gradients come in as flat gray, and clip paths, masks, images, text and `<use>` references are ignored. The vertex types are worked out from the handles: Sharp corners, Mirrored or Aligned smooth points, and Free for the rest.
+Linear and radial gradients come in as shape gradients, with their stops (as color ramp stops), spread, `gradientTransform` and `href` to another gradient. A radial gradient comes in as a circle: its focus point is ignored, and on a stretched element its radius follows the width. A gradient with a single stop is a flat color, and one without stops paints nothing.
 
-**Export:** with shapes selected, right-click and choose **Export Shapes as SVG...**, or click **Export SVG...** in the shape's **Selection** panel. Each shape becomes one `<path>` with its curves, rotation and scale built into the coordinates, plus its fill, stroke, opacity, dashes, joins, ends and text. A shape with holes writes one subpath per contour and `fill-rule="evenodd"`, and an open path has no closing `Z`. A shape with a corner radius writes its rounded outline as short straight edges. SVG has no inside or outside line, so a line set to **Inside** or **Outside** goes on a second path that follows the outline at half the line width. Exporting and importing again gives the same outline.
+What does not carry over: clip paths, masks, images, text and `<use>` references are ignored. The vertex types are worked out from the handles: Sharp corners, Mirrored or Aligned smooth points, and Free for the rest.
+
+**Export:** with shapes selected, right-click and choose **Export Shapes as SVG...**, or click **Export SVG...** in the shape's **Selection** panel. Each shape becomes one `<path>` with its curves, rotation and scale built into the coordinates, plus its fill (gradients as `<linearGradient>` or `<radialGradient>`; SVG only blends linearly in RGB, so a ramp with another interpolation or color mode is written as many close stops that look the same), stroke, opacity, dashes, joins, ends and text. A shape with holes writes one subpath per contour and `fill-rule="evenodd"`, and an open path has no closing `Z`. A shape with a corner radius writes its rounded outline as short straight edges. SVG has no inside or outside line, so a line set to **Inside** or **Outside** goes on a second path that follows the outline at half the line width. Exporting and importing again gives the same outline.
 
 ## Connecting shapes with arrows
 

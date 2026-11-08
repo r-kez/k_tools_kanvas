@@ -8,7 +8,10 @@ from gpu_extras.batch import batch_for_shader
 
 from .. import shape_geometry as geometry
 from ..item_geometry import shape_draw_indices
+from ..shape_gradient import average_color, canvas_points, is_gradient, ramp_key, ramp_values
+from ..shape_gradient import signature as gradient_signature
 from .gpu_arrow import _antialias_fringe, _draw_plain_strokes, _square, _triangles
+from .gpu_gradient import draw_gradient, get_gradient_shader
 from .gpu_theme import (disable_soft_text_shadow, draw_canvas_text,
                         enable_soft_text_shadow, selection_color)
 
@@ -159,7 +162,8 @@ def shape_draw_geometry(item, pixel_size):
                  item.shape_fill_opacity, tuple(item.shape_fill_color), item.shape_show_outline,
                  tuple(item.shape_line_color), item.shape_line_width, item.shape_line_style,
                  item.shape_closed, item.shape_line_join, item.shape_line_cap,
-                 item.shape_line_align, item.shape_corner_radius)
+                 item.shape_line_align, item.shape_corner_radius,
+                 gradient_signature(item))
     key = item.as_pointer()
     cached = _geometry_cache.get(key)
     if cached is not None and cached[0] == signature:
@@ -172,10 +176,24 @@ def shape_draw_geometry(item, pixel_size):
         result['line'] = (_line_geometry(item, pixel_size, line_color), line_color)
     elif len(points) >= geometry.min_vertices(item):
         if item.shape_show_fill and item.shape_fill_opacity * opacity > 0.0:
-            color = (*item.shape_fill_color, item.shape_fill_opacity * opacity)
+            alpha = item.shape_fill_opacity * opacity
             triangles = geometry.fill_canvas_triangles(item)
-            fringe, fringe_colors = _fill_fringe(geometry.outlines(item), pixel_size, color)
-            result['fill'] = (triangles, fringe, fringe_colors, color)
+            gradient = None
+            if is_gradient(item):
+                values = ramp_values(item)
+                start, end = canvas_points(item)
+                gradient = (item.shape_fill_type, item.shape_gradient_spread, start, end,
+                            ramp_key(item), values, alpha)
+                average = average_color(values)
+                # Stand-in when the gradient shader is missing; the fringe carries only
+                # coverage (alpha 1 inside, fading out), the shader gives the colors.
+                color = (*average[:3], average[3] * alpha)
+                fringe, fringe_colors = _fill_fringe(geometry.outlines(item), pixel_size,
+                                                     (1.0, 1.0, 1.0, 1.0))
+            else:
+                color = (*item.shape_fill_color, alpha)
+                fringe, fringe_colors = _fill_fringe(geometry.outlines(item), pixel_size, color)
+            result['fill'] = (triangles, fringe, fringe_colors, color, gradient)
         if item.shape_show_outline:
             result['line'] = (_line_geometry(item, pixel_size, line_color), line_color)
     if len(_geometry_cache) > 512:
@@ -193,17 +211,29 @@ def _body_batches(shader, smooth, parts):
 
     def flat(triangles, color):
         if triangles:
-            batches.append((False, batch_for_shader(shader, 'TRIS', {'pos': triangles}), color))
+            batches.append(('FLAT', batch_for_shader(shader, 'TRIS', {'pos': triangles}), color))
 
     def fringe_batch(fringe, colors):
         if fringe:
-            batches.append((True, batch_for_shader(smooth, 'TRIS', {
+            batches.append(('SMOOTH', batch_for_shader(smooth, 'TRIS', {
                 'pos': fringe, 'color': colors}), None))
 
     if parts['fill'] is not None:
-        triangles, fringe, fringe_colors, color = parts['fill']
-        flat(triangles, color)
-        fringe_batch(fringe, fringe_colors)
+        triangles, fringe, fringe_colors, color, gradient = parts['fill']
+        gradient_shader = get_gradient_shader() if gradient is not None else None
+        if gradient_shader is not None:
+            # Inside and fringe in one batch: alpha 1 inside, the fringe's fade outside.
+            positions = list(triangles) + list(fringe)
+            alphas = [1.0] * len(triangles) + [c[3] for c in fringe_colors]
+            if positions:
+                batches.append(('GRADIENT', batch_for_shader(gradient_shader, 'TRIS', {
+                    'pos': positions, 'alpha': alphas}), gradient))
+        elif gradient is not None:
+            flat(triangles, color)
+            fringe_batch(fringe, [(*color[:3], c[3] * color[3]) for c in fringe_colors])
+        else:
+            flat(triangles, color)
+            fringe_batch(fringe, fringe_colors)
     if parts['line'] is not None:
         (triangles, fringe, fringe_colors), color = parts['line']
         fringe_batch(fringe, fringe_colors)
@@ -222,8 +252,10 @@ def _draw_body(shader, smooth, item, pixel_size):
             _batch_cache.clear()
         cached = (parts, _body_batches(shader, smooth, parts))
         _batch_cache[key] = cached
-    for smooth_colors, batch, color in cached[1]:
-        if smooth_colors:
+    for kind, batch, color in cached[1]:
+        if kind == 'GRADIENT':
+            draw_gradient(get_gradient_shader(), batch, color)
+        elif kind == 'SMOOTH':
             smooth.bind()
             batch.draw(smooth)
         else:

@@ -111,8 +111,8 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             if content or any(item.item_type == 'FRAME' for item in selected):
                 layout.operator("kanvas.create_frame", icon='GROUP_VERTEX',
                                 text=f"Create Frame ({n_sel})" if n_sel > 1 else "Create Frame")
-                if any(item.item_type == 'FRAME' and item.show_in_editor
-                       for item in settings.images):
+                if any(item.item_type == 'FRAME' and not item.frame_is_group
+                       and item.show_in_editor for item in settings.images):
                     layout.operator("kanvas.attach_to_frame", icon='LINKED',
                                     text="Attach Selection to Frame...")
             layout.separator()

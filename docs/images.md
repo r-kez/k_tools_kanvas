@@ -101,6 +101,8 @@ To make a single self-contained file, turn **Auto-Copy** off before importing, s
 
 Use **Add > PureRef Scene (.pur)** to import a compatible PureRef board. This importer is experimental.
 
+The imported items come in as one **group named after the file**, so the whole board moves as one (turn **Group** off in the file browser's side panel to keep them loose). A `.pur` file dropped on the canvas lands with its middle where you let go, keeping its layout. From the Add menu the board keeps PureRef's own coordinates.
+
 - Embedded PNG and JPG images are **packed into the `.blend`**, even when Auto-Copy is on. Repeated references share one image.
 - Position, scale, rotation, opacity, and lock state are copied where the file provides them.
 - Simple notes from older scenes become text cards.

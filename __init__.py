@@ -20,6 +20,8 @@ def _kanvas_maintenance():
         prune_texture_cache()
         from .utils.hidden_datablocks import sweep_throttled
         sweep_throttled()
+        from .utils.shape_gradient import unshare_ramps
+        unshare_ramps()
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type != 'NODE_EDITOR':
@@ -62,6 +64,7 @@ def ensure_kanvas_protection(dummy):
     clear_modal_areas()
     clear_mask_cache()
     hide_kanvas_datablocks()
+    subscribe_gradient_edits()
     from . import keymap
     keymap.sync_hand_cursor()
     clear_markup_cache()
@@ -92,6 +95,34 @@ def protect_kanvas_trees_before_save(dummy):
     for tree in bpy.data.node_groups:
         if tree.bl_idname == 'KanvasNodeTree':
             tree.use_fake_user = True
+
+
+_GRADIENT_OWNER = object()
+# What Blender's color ramp widget changes: element colors and positions, the ramp's
+# modes, and the texture's ramp itself (adding, removing or dragging a stop).
+_GRADIENT_KEYS = (
+    (bpy.types.ColorRampElement, 'color'), (bpy.types.ColorRampElement, 'position'),
+    (bpy.types.ColorRamp, 'interpolation'), (bpy.types.ColorRamp, 'color_mode'),
+    (bpy.types.ColorRamp, 'hue_interpolation'), (bpy.types.Texture, 'color_ramp'),
+    (bpy.types.BlendTexture, 'color_ramp'),
+)
+
+
+def _redraw_boards(*_args):
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'NODE_EDITOR':
+                area.tag_redraw()
+
+
+def subscribe_gradient_edits():
+    """A gradient's colors live in a texture, which has no Kanvas update of its own:
+    redraw the boards whenever a color ramp changes. File loads drop subscriptions,
+    so this runs again after each load."""
+    bpy.msgbus.clear_by_owner(_GRADIENT_OWNER)
+    for key in _GRADIENT_KEYS:
+        bpy.msgbus.subscribe_rna(key=key, owner=_GRADIENT_OWNER, args=(),
+                                 notify=_redraw_boards)
 
 
 @bpy.app.handlers.persistent
@@ -197,6 +228,7 @@ def register():
     bpy.app.handlers.save_pre.append(protect_kanvas_trees_before_save)
     bpy.app.handlers.undo_post.append(refresh_kanvas_after_undo)
     bpy.app.handlers.redo_post.append(refresh_kanvas_after_undo)
+    subscribe_gradient_edits()
     bpy.types.NODE_HT_header.append(_draw_mode_header)
 
     if not bpy.app.timers.is_registered(_restore_loaded_frames):
@@ -230,6 +262,7 @@ def unregister():
         bpy.app.handlers.undo_post.remove(refresh_kanvas_after_undo)
     if refresh_kanvas_after_undo in bpy.app.handlers.redo_post:
         bpy.app.handlers.redo_post.remove(refresh_kanvas_after_undo)
+    bpy.msgbus.clear_by_owner(_GRADIENT_OWNER)
 
     from .operators.ops_modal import clear_modal_areas
     clear_modal_areas()

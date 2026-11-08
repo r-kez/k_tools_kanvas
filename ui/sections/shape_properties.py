@@ -1,3 +1,27 @@
+def _draw_gradient(layout, item):
+    """Color ramp, spread and points of a gradient fill."""
+    column = layout.column(align=True)
+    texture = item.shape_gradient_texture
+    if texture is not None and texture.color_ramp is not None:
+        column.template_color_ramp(texture, "color_ramp", expand=True)
+    else:
+        column.operator("kanvas.gradient_edit_colors", text="Edit Colors", icon='COLOR')
+    column.prop(item, "shape_gradient_spread", text="Spread")
+    points = layout.column(align=True)
+    radial = item.shape_fill_type == 'RADIAL'
+    row = points.row(align=True)
+    row.label(text="Center" if radial else "Start")
+    row.prop(item, "shape_gradient_start", index=0, text="X")
+    row.prop(item, "shape_gradient_start", index=1, text="Y")
+    row = points.row(align=True)
+    row.label(text="Edge" if radial else "End")
+    row.prop(item, "shape_gradient_end", index=0, text="X")
+    row.prop(item, "shape_gradient_end", index=1, text="Y")
+    row = points.row(align=True)
+    row.operator("kanvas.gradient_rotate", text="Turn 90°", icon='FILE_REFRESH')
+    row.operator("kanvas.gradient_reset_points", text="Reset", icon='LOOP_BACK')
+
+
 def draw_shape_properties(layout, settings, item):
     layout.use_property_split = False
     box = layout.box()
@@ -77,8 +101,14 @@ def draw_shape_properties(layout, settings, item):
     check.prop(item, "shape_show_fill", text="Fill")
     sub = row.row(align=True)
     sub.enabled = item.shape_show_fill
-    sub.prop(item, "shape_fill_color", text="")
+    if item.shape_fill_type == 'SOLID':
+        sub.prop(item, "shape_fill_color", text="")
     sub.prop(item, "shape_fill_opacity", text="", slider=True)
+    kind = fill.row(align=True)
+    kind.enabled = item.shape_show_fill and item.shape_closed
+    kind.prop(item, "shape_fill_type", expand=True)
+    if item.shape_fill_type != 'SOLID' and item.shape_show_fill:
+        _draw_gradient(fill, item)
 
     outline = box.column(align=True)
     row = outline.row(align=True)

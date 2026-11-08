@@ -74,7 +74,7 @@ After pressing one, move the mouse. **Click or press `Enter`** to confirm. **Pre
 | `Alt + S` | Reset scale and shear |
 | `Alt + R` | Reset rotation |
 
-The right-click menu also has **Reset Transform**. Resets apply to the selected, unlocked items.
+The right-click menu also has **Reset Transform**. Resets apply to the selected, unlocked items. A group or frame resets with its contents: `Alt + G` moves it and everything inside so its middle sits on the origin, and `Alt + R` / `Alt + S` reset each image and shape inside where it stands (text cards never rotate, so they are left alone).
 
 ## Copying a style
 

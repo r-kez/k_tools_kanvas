@@ -23,10 +23,16 @@ try:
     with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.active):
         assert bpy.ops.kanvas.import_pureref(filepath=str(source)) == {'FINISHED'}
         settings = area.spaces.active.edit_tree.kanvas_settings
-        assert len(settings.images) == len(scene.images)
-        assert len({item.image_data.as_pointer() for item in settings.images}) == len(
+        images = [item for item in settings.images if item.item_type == 'IMAGE']
+        assert len(images) == len(scene.images)
+        assert len({item.image_data.as_pointer() for item in images}) == len(
             {record.image_id for record in scene.images})
-        for item, record in zip(settings.images, scene.images):
+        if len(images) > 1:
+            group = next(item for item in settings.images
+                         if item.item_type == 'FRAME' and item.frame_is_group)
+            assert group.name == source.stem, group.name
+            assert all(item.parent_frame == group.frame_node_name for item in images)
+        for item, record in zip(images, scene.images):
             assert item.image_data.packed_file
             assert image_origin(item.image_data) == ('PUR', str(source.resolve()))
             assert not item.image_data.filepath

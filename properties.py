@@ -337,6 +337,31 @@ def update_shape_outline(self, context):
     update_shape_appearance(self, context)
 
 
+def update_shape_fill_type(self, context):
+    """Choosing a gradient the first time gives it two stops and fitting points."""
+    from .utils.shape_gradient import seed_gradient
+    if self.shape_fill_type != 'SOLID':
+        seed_gradient(self)
+    update_shape_appearance(self, context)
+
+
+class KanvasGradientStop(bpy.types.PropertyGroup):
+    """One color of a gradient saved before gradients used a color ramp (read only)."""
+    color: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Color', description='Color at this stop',
+        subtype='COLOR', size=3, default=(1.0, 1.0, 1.0), min=0.0, max=1.0,
+        update=update_shape_appearance,
+    )
+    alpha: bpy.props.FloatProperty(  # type: ignore
+        name='Opacity', description='Opacity at this stop (the fill opacity applies on top)',
+        default=1.0, min=0.0, max=1.0, subtype='FACTOR', update=update_shape_appearance,
+    )
+    position: bpy.props.FloatProperty(  # type: ignore
+        name='Position', description='Where this stop sits, from the start (0) to the end (1)',
+        default=0.0, min=0.0, max=1.0, subtype='FACTOR', update=update_shape_appearance,
+    )
+
+
 class KanvasShapeVertex(bpy.types.PropertyGroup):
     co: bpy.props.FloatVectorProperty(  # type: ignore
         name='Vertex',
@@ -779,6 +804,47 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         name='Fill Opacity', description='Opacity of the fill',
         default=0.25, min=0.0, max=1.0, subtype='FACTOR',
         update=update_shape_appearance,
+    )
+    shape_fill_type: bpy.props.EnumProperty(  # type: ignore
+        name='Fill Type', description='Fill with one color or with a gradient',
+        items=[(identifier, label, description, icon, number)
+               for number, (identifier, label, description, icon) in enumerate((
+                   ('SOLID', 'Solid', 'One color', 'SNAP_FACE'),
+                   ('LINEAR', 'Linear', 'Colors change along a line, from the start point '
+                    'to the end point', 'IPO_LINEAR'),
+                   ('RADIAL', 'Radial', 'Colors change outward in a circle, from the start '
+                    'point to the end point', 'PROP_SPHERE')))],
+        default='SOLID', update=update_shape_fill_type,
+    )
+    # The colors: a hidden texture used only for its ColorRamp, so the panel can show
+    # Blender's color ramp widget (see utils/shape_gradient.py).
+    shape_gradient_texture: bpy.props.PointerProperty(  # type: ignore
+        name='Gradient Colors', type=bpy.types.Texture,
+        description='Hidden texture that holds the color ramp of this gradient',
+        update=update_shape_appearance,
+    )
+    # Stops saved before the color ramp; read until the shape gets its ramp.
+    shape_gradient_stops: bpy.props.CollectionProperty(type=KanvasGradientStop)  # type: ignore
+    shape_gradient_start: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Gradient Start',
+        description=('Where the gradient starts (the center of a radial one), in the shape '
+                     'box: -0.5 to 0.5 on each axis, so it turns and scales with the shape'),
+        size=2, default=(-0.5, 0.0), update=update_shape_appearance,
+    )
+    shape_gradient_end: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Gradient End',
+        description=('Where the gradient ends (a point on the edge of a radial one), in the '
+                     'shape box'),
+        size=2, default=(0.5, 0.0), update=update_shape_appearance,
+    )
+    shape_gradient_spread: bpy.props.EnumProperty(  # type: ignore
+        name='Spread', description='What the fill does past the ends of the gradient',
+        items=[(identifier, label, description, number)
+               for number, (identifier, label, description) in enumerate((
+                   ('PAD', 'Pad', 'Keep the end colors'),
+                   ('REFLECT', 'Reflect', 'Repeat the gradient, mirrored each time'),
+                   ('REPEAT', 'Repeat', 'Repeat the gradient')))],
+        default='PAD', update=update_shape_appearance,
     )
     shape_show_outline: bpy.props.BoolProperty(  # type: ignore
         name='Outline', description='Draw a line around the shape. It stays on while the fill is off, so the shape never disappears',

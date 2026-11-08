@@ -180,6 +180,85 @@ def _event_in_canvas(context, event):
     )
 
 
+def reset_item_transforms(context, settings, active, action):
+    """Alt+G, Alt+R and Alt+S: reset the selection (or the active item alone).
+
+    Frames and groups have no rotation or scale of their own, so their contents are
+    what gets reset: Alt+G moves the frame together with everything inside it, its
+    middle landing on the origin, and Alt+R / Alt+S reset each member's own rotation
+    or scale where it stands. Text cards never rotate, so they are left alone there.
+    Returns True when anything changed.
+    """
+    from ..utils.gpu import frame_ancestors, frame_descendants, update_frame_bounds
+    from ..properties import suspend_frame_geometry_updates
+
+    def usable(item):
+        return item.show_in_editor and not item.is_locked
+
+    if active.is_selected:
+        targets = [item for item in settings.images if item.is_selected and usable(item)]
+    else:
+        targets = [active] if usable(active) else []
+    if not targets:
+        return False
+    tree = getattr(context.space_data, 'edit_tree', None) if context.space_data else None
+    parents = set()
+    changed = False
+
+    if action == 'RESET_MOVE':
+        frame_names = {item.frame_node_name for item in targets if item.item_type == 'FRAME'}
+        roots = [item for item in targets
+                 if not any(parent.frame_node_name in frame_names
+                            for parent in frame_ancestors(settings, item))]
+        with suspend_frame_geometry_updates():
+            for root in roots:
+                if root.item_type == 'FRAME':
+                    dx = -(root.location[0] + root.frame_width * 0.5)
+                    dy = -(root.location[1] - root.frame_height * 0.5)
+                    moved = [root] + frame_descendants(settings, root.frame_node_name)
+                else:
+                    dx, dy = -root.location[0], -root.location[1]
+                    moved = [root]
+                if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+                    continue
+                for item in moved:
+                    item.location = (item.location[0] + dx, item.location[1] + dy)
+                changed = True
+                if root.item_type == 'FRAME':
+                    parents.add(root.frame_node_name)
+                if root.parent_frame:
+                    parents.add(root.parent_frame)
+    else:
+        items, seen = [], set()
+        for target in targets:
+            members = (frame_descendants(settings, target.frame_node_name)
+                       if target.item_type == 'FRAME' else [target])
+            for item in members:
+                if (item.item_type in {'IMAGE', 'SHAPE'} and usable(item)
+                        and item.as_pointer() not in seen):
+                    seen.add(item.as_pointer())
+                    items.append(item)
+        with suspend_frame_geometry_updates():
+            for item in items:
+                if action == 'RESET_ROTATE':
+                    if item.rotation == 0.0:
+                        continue
+                    item.rotation = 0.0
+                else:
+                    if (tuple(item.scale_xy) == (1.0, 1.0) and item.scale_master == 1.0
+                            and tuple(item.shear_xy) == (0.0, 0.0)):
+                        continue
+                    item.scale_xy = (1.0, 1.0)
+                    item.scale_master = 1.0
+                    item.shear_xy = (0.0, 0.0)
+                changed = True
+                if item.parent_frame:
+                    parents.add(item.parent_frame)
+    for name in parents:
+        update_frame_bounds(tree, settings, name)
+    return changed
+
+
 class KanvasInteractionHelpers:
     """Shared hit testing and geometry for short Kanvas input gestures."""
 
@@ -2179,27 +2258,10 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 bpy.ops.kanvas.detach_from_frame()
                 context.area.tag_redraw()
                 return {'CANCELLED'}
-            elif img and self.action == 'RESET_MOVE':
-                if tuple(img.location) == (0.0, 0.0):
-                    return {'CANCELLED'}
-                img.location = (0, 0)
+            elif img and self.action in {'RESET_MOVE', 'RESET_SCALE', 'RESET_ROTATE'}:
+                changed = reset_item_transforms(context, settings, img, self.action)
                 context.area.tag_redraw()
-                return {'FINISHED'}
-            elif img and self.action == 'RESET_SCALE':
-                if (tuple(img.scale_xy) == (1.0, 1.0) and img.scale_master == 1.0
-                        and tuple(img.shear_xy) == (0.0, 0.0)):
-                    return {'CANCELLED'}
-                img.scale_xy = (1.0, 1.0)
-                img.scale_master = 1.0
-                img.shear_xy = (0.0, 0.0)
-                context.area.tag_redraw()
-                return {'FINISHED'}
-            elif img and self.action == 'RESET_ROTATE':
-                if img.rotation == 0.0:
-                    return {'CANCELLED'}
-                img.rotation = 0.0
-                context.area.tag_redraw()
-                return {'FINISHED'}
+                return {'FINISHED'} if changed else {'CANCELLED'}
             return {'PASS_THROUGH'}
 
         area_key = (context.window.as_pointer(), context.area.as_pointer())

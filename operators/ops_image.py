@@ -1039,6 +1039,8 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
                 setattr(new_img, name, getattr(source, name))
             for name in ('shape_fill_color', 'shape_line_color', 'text_color'):
                 setattr(new_img, name, tuple(getattr(source, name)))
+            from ..utils.shape_gradient import gradient_record, set_gradient_record
+            set_gradient_record(new_img, gradient_record(source))
             for line in source.text_lines:
                 copied = new_img.text_lines.add()
                 copied.line_id = uuid.uuid4().hex
@@ -1452,7 +1454,7 @@ class KANVAS_OT_PackImages(KanvasTreeOnly, bpy.types.Operator):
 
 
 class KANVAS_OT_ResetTransform(KanvasTreeOnly, bpy.types.Operator):
-    """Reset Location, Scale or Rotation of the active Kanvas image"""
+    """Reset Location, Scale or Rotation of the selected Kanvas items"""
     bl_idname = "kanvas.reset_transform"
     bl_label = "Reset Transform"
     bl_description = 'Reset the chosen transform of selected unlocked items'
@@ -1472,25 +1474,13 @@ class KANVAS_OT_ResetTransform(KanvasTreeOnly, bpy.types.Operator):
         if not (0 <= settings.active_image_index < len(settings.images)):
             return {'CANCELLED'}
 
+        from .ops_modal import reset_item_transforms
         img = settings.images[settings.active_image_index]
-
-        if self.transform_type == 'LOCATION':
-            if tuple(img.location) == (0.0, 0.0):
-                return {'CANCELLED'}
-            img.location = (0, 0)
-        elif self.transform_type == 'SCALE':
-            if (tuple(img.scale_xy) == (1.0, 1.0) and img.scale_master == 1.0
-                    and tuple(img.shear_xy) == (0.0, 0.0)):
-                return {'CANCELLED'}
-            img.scale_xy = (1.0, 1.0)
-            img.scale_master = 1.0
-            img.shear_xy = (0.0, 0.0)
-        elif self.transform_type == 'ROTATION':
-            if img.rotation == 0.0:
-                return {'CANCELLED'}
-            img.rotation = 0.0
-        else:
+        action = {'LOCATION': 'RESET_MOVE', 'SCALE': 'RESET_SCALE',
+                  'ROTATION': 'RESET_ROTATE'}[self.transform_type]
+        # Same rules as Alt+G / Alt+S / Alt+R: groups and frames reset with their contents.
+        if not reset_item_transforms(context, settings, img, action):
             return {'CANCELLED'}
-
-        context.area.tag_redraw()
+        if context.area:
+            context.area.tag_redraw()
         return {'FINISHED'}

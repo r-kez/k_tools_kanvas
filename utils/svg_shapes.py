@@ -392,6 +392,99 @@ def _float(value, default=0.0):
     return float(match.group(0)) if match else default
 
 
+# --- gradients -------------------------------------------------------------------------
+
+_XLINK_HREF = '{http://www.w3.org/1999/xlink}href'
+
+
+def _offset(value):
+    value = (value or '0').strip()
+    number = _float(value.rstrip('%'), 0.0)
+    return max(0.0, min(1.0, number / 100.0 if value.endswith('%') else number))
+
+
+def _gradients(root, classes):
+    """id -> {'tag', 'attrs', 'stops'} of every gradient, `href` inheritance resolved.
+
+    Stops are (r, g, b, a, offset); offsets never go back (SVG clamps them up).
+    """
+    raw = {}
+    for element in root.iter():
+        tag = _tag(element)
+        if tag not in {'linearGradient', 'radialGradient'} or not element.get('id'):
+            continue
+        stops, last = [], 0.0
+        for child in element:
+            if _tag(child) != 'stop':
+                continue
+            style = dict(child.attrib)
+            style.update(_style_of(child, classes))
+            color = parse_color(style.get('stop-color', 'black')) or (0.0, 0.0, 0.0)
+            alpha = max(0.0, min(1.0, _float(style.get('stop-opacity'), 1.0)))
+            last = max(last, _offset(child.get('offset')))
+            stops.append((*color, alpha, last))
+        raw[element.get('id')] = {'tag': tag, 'attrs': dict(element.attrib), 'stops': stops}
+
+    def resolve(name, seen):
+        own = raw[name]
+        href = own['attrs'].get(_XLINK_HREF) or own['attrs'].get('href') or ''
+        parent = href[1:] if href.startswith('#') else ''
+        if parent not in raw or parent in seen:
+            return own
+        base = resolve(parent, seen | {name})
+        return {'tag': own['tag'], 'attrs': {**base['attrs'], **own['attrs']},
+                'stops': own['stops'] or base['stops']}
+
+    return {name: resolve(name, {name}) for name in raw}
+
+
+def _place_gradient(gradient, bbox, matrix):
+    """Fill gradient of one element: {'type', 'spread', 'start', 'end', 'stops'} with
+    canvas points (y up). A radial gradient becomes a circle: its focus is ignored and,
+    on a stretched element, its radius follows the x axis."""
+    attrs = gradient['attrs']
+    bounding = attrs.get('gradientUnits', 'objectBoundingBox') != 'userSpaceOnUse'
+    radial = gradient['tag'] == 'radialGradient'
+
+    def length(name, default):
+        value = (attrs.get(name) or default).strip()
+        if value.endswith('%'):
+            fraction = _float(value[:-1]) / 100.0
+            if bounding:
+                return fraction
+            # A percentage of the viewport in user space: use the element's box instead.
+            axis = 1 if name in {'y1', 'y2', 'cy', 'fy'} else 0
+            return bbox[axis] + fraction * (bbox[axis + 2] - bbox[axis])
+        return _float(value)
+
+    if radial:
+        cx, cy, r = length('cx', '50%'), length('cy', '50%'), length('r', '50%')
+        start, end = (cx, cy), (cx + r, cy)
+    else:
+        start = (length('x1', '0%'), length('y1', '0%'))
+        end = (length('x2', '100%'), length('y2', '0%'))
+    local = parse_transform(attrs.get('gradientTransform'))
+    if bounding:
+        x0, y0, x1, y1 = bbox
+        local = multiply((x1 - x0, 0.0, 0.0, y1 - y0, x0, y0), local)
+    full = multiply(matrix, local)
+
+    def canvas(point):
+        x, y = apply(full, point)
+        return (x, -y)
+
+    spread = attrs.get('spreadMethod', 'pad').strip().lower()
+    return {'type': 'RADIAL' if radial else 'LINEAR',
+            'spread': {'reflect': 'REFLECT', 'repeat': 'REPEAT'}.get(spread, 'PAD'),
+            'start': canvas(start), 'end': canvas(end), 'stops': list(gradient['stops'])}
+
+
+def _segments_bbox(found):
+    points = [p for segments, _closed in found for segment in segments for p in segment]
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
 # --- reading ---------------------------------------------------------------------------
 
 def parse_svg(text):
@@ -400,12 +493,14 @@ def parse_svg(text):
     Returns one entry per drawn element: [{'contours': [segments, ...], 'name': str,
     'fill': color or None, 'fill_opacity': float, 'fill_rule': 'nonzero' or 'evenodd',
     'stroke': color or None, 'stroke_width': float, 'stroke_opacity': float,
-    'dashed': bool}], with points in canvas space (y up) and every transform already
-    applied. Each contour is a list of cubic segments; 'closed' says, per contour,
+    'dashed': bool, 'gradient': dict or None}], with points in canvas space (y up) and
+    every transform already applied. A gradient fill (see `_place_gradient`) also sets
+    'fill' to its middle color, for readers that only know flat colors. Each contour is a list of cubic segments; 'closed' says, per contour,
     whether the subpath ended with Z (rectangles, circles and polygons always do).
     """
     root = ET.fromstring(text)
     classes = _css_classes(root)
+    gradients = _gradients(root, classes)
     outlines = []
 
     def visit(element, matrix, inherited, opacity):
@@ -455,6 +550,18 @@ def parse_svg(text):
         scale = math.sqrt(abs(matrix[0] * matrix[3] - matrix[1] * matrix[2])) or 1.0
         # A <line> is never filled, whatever its fill says.
         fill = None if tag == 'line' else parse_color(style.get('fill', 'black'))
+        gradient, fill_opacity = None, _float(style.get('fill-opacity'), 1.0) * opacity
+        reference = re.match(r'url\(\s*#([^)\s]+)\s*\)', style.get('fill', '').strip())
+        if fill is not None and reference and reference.group(1) in gradients:
+            stops = gradients[reference.group(1)]['stops']
+            if not stops:
+                fill = None                       # SVG: a gradient without stops paints nothing
+            elif len(stops) == 1:
+                fill, fill_opacity = stops[0][:3], fill_opacity * stops[0][3]
+            else:
+                gradient = _place_gradient(gradients[reference.group(1)],
+                                           _segments_bbox(found), matrix)
+                fill = stops[len(stops) // 2][:3]
         stroke = parse_color(style.get('stroke', 'none'))
         dash = style.get('stroke-dasharray', 'none').strip().lower()
         contours = [[tuple((x, -y) for x, y in (apply(matrix, p) for p in segment))
@@ -463,7 +570,7 @@ def parse_svg(text):
         rule = style.get('fill-rule', 'nonzero').strip().lower()
         outlines.append({
             'contours': contours, 'closed': closed, 'name': element.get('id') or '',
-            'fill': fill, 'fill_opacity': _float(style.get('fill-opacity'), 1.0) * opacity,
+            'fill': fill, 'fill_opacity': fill_opacity, 'gradient': gradient,
             'fill_rule': 'evenodd' if rule == 'evenodd' else 'nonzero',
             'stroke': stroke, 'stroke_width': _float(style.get('stroke-width'), 1.0) * scale,
             'stroke_opacity': _float(style.get('stroke-opacity'), 1.0) * opacity,
@@ -661,11 +768,37 @@ def _stroke_attributes(item, dash_pattern):
     return attributes
 
 
+def _is_gradient(item):
+    from .shape_gradient import is_gradient
+    from .shape_gradient import stop_records
+    return is_gradient(item) and bool(stop_records(item))
+
+
+def _gradient_element(item, name):
+    """<linearGradient> or <radialGradient> of a shape, in canvas units."""
+    from .shape_gradient import canvas_points, export_stops
+    (sx, sy), (ex, ey) = canvas_points(item)
+    spread = {'PAD': 'pad', 'REFLECT': 'reflect', 'REPEAT': 'repeat'}[item.shape_gradient_spread]
+    common = f'id="{name}" gradientUnits="userSpaceOnUse" spreadMethod="{spread}"'
+    if item.shape_fill_type == 'RADIAL':
+        head = (f'    <radialGradient {common} cx="{_num(sx)}" cy="{_num(-sy)}" '
+                f'r="{_num(math.hypot(ex - sx, ey - sy))}">\n')
+        tail = '    </radialGradient>\n'
+    else:
+        head = (f'    <linearGradient {common} x1="{_num(sx)}" y1="{_num(-sy)}" '
+                f'x2="{_num(ex)}" y2="{_num(-ey)}">\n')
+        tail = '    </linearGradient>\n'
+    stops = ''.join(f'      <stop offset="{_num(position)}" stop-color="{hex_color((r, g, b))}" '
+                    f'stop-opacity="{_num(a)}"/>\n'
+                    for r, g, b, a, position in export_stops(item))
+    return head + stops + tail
+
+
 def export_svg(items):
     """An SVG document with one <path> (and its text) per shape item."""
     from . import shape_geometry as sg
     from .arrow_geometry import dash_pattern
-    bodies = []
+    bodies, gradients = [], []
     left = bottom = math.inf
     right = top = -math.inf
     for item in items:
@@ -679,7 +812,11 @@ def export_svg(items):
         attributes = [f'id="{_escape(item.name)}"', f'd="{data}"']
         if data.count('M ') > 1:
             attributes.append('fill-rule="evenodd"')
-        if item.shape_show_fill:
+        if item.shape_show_fill and _is_gradient(item):
+            gradients.append(_gradient_element(item, f'kanvas-gradient-{len(gradients) + 1}'))
+            attributes.append(f'fill="url(#kanvas-gradient-{len(gradients)})"')
+            attributes.append(f'fill-opacity="{_num(item.shape_fill_opacity * item.opacity)}"')
+        elif item.shape_show_fill:
             attributes.append(f'fill="{hex_color(item.shape_fill_color)}"')
             attributes.append(f'fill-opacity="{_num(item.shape_fill_opacity * item.opacity)}"')
         else:
@@ -712,4 +849,6 @@ def export_svg(items):
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{_num(width)}" '
             f'height="{_num(height)}" viewBox="{_num(left)} {_num(-top)} {_num(width)} '
-            f'{_num(height)}">\n' + '\n'.join(bodies) + '\n</svg>\n')
+            f'{_num(height)}">\n'
+            + (f'  <defs>\n{"".join(gradients)}  </defs>\n' if gradients else '')
+            + '\n'.join(bodies) + '\n</svg>\n')

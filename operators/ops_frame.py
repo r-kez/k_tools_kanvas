@@ -68,7 +68,8 @@ def _frame_choices(self, context):
         return []
     return [(item.frame_node_name, item.name, "")
             for item in get_settings(context).images
-            if item.item_type == 'FRAME' and item.show_in_editor and not item.is_locked]
+            if item.item_type == 'FRAME' and not item.frame_is_group
+            and item.show_in_editor and not item.is_locked]
 
 
 class KANVAS_OT_AttachToFrame(bpy.types.Operator):
@@ -88,8 +89,8 @@ class KANVAS_OT_AttachToFrame(bpy.types.Operator):
         items = get_settings(context).images
         return any(item.is_selected and not item.is_locked
                    and item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'}
-                   and any(frame.item_type == 'FRAME' and frame.show_in_editor
-                           and not frame.is_locked
+                   and any(frame.item_type == 'FRAME' and not frame.frame_is_group
+                           and frame.show_in_editor and not frame.is_locked
                            and frame.frame_node_name != item.frame_node_name for frame in items)
                    for item in items)
 
@@ -109,7 +110,9 @@ class KANVAS_OT_AttachToFrame(bpy.types.Operator):
                    and item.item_type in {'IMAGE', 'TEXT', 'SHAPE', 'FRAME'}
                    and not (item.item_type == 'FRAME' and item.frame_node_name == frame_name)]
         target_frame = get_frame(settings, frame_name)
-        if not targets or not target_frame or target_frame.is_locked:
+        if (not targets or not target_frame or target_frame.is_locked
+                or target_frame.frame_is_group):
+            # Groups take members through Ctrl+G, which keeps groups from nesting.
             return {'CANCELLED'}
         targets = _selection_roots(settings, targets)
         invalid = [item for item in targets if not can_attach_to_frame(settings, item, frame_name)]

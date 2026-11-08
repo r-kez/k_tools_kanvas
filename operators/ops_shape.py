@@ -88,6 +88,10 @@ def normalize_shape(item):
             for name in ('handle_left', 'handle_right'):
                 hx, hy = getattr(vertex, name)
                 setattr(vertex, name, ((hx - cx) / span_x, (hy - cy) / span_y))
+        # So do the gradient points: the gradient stays where it was on the canvas.
+        for name in ('shape_gradient_start', 'shape_gradient_end'):
+            gx, gy = getattr(item, name)
+            setattr(item, name, ((gx - cx) / span_x, (gy - cy) / span_y))
     for arrow, side, position in anchored:
         setattr(arrow, side + '_uv', shape_geometry.uv_at(item, position))
     if item.parent_frame:
@@ -1747,6 +1751,15 @@ def shape_from_outline(context, settings, records, outline, name='SVG Shape'):
     item.shape_show_fill = fill is not None
     item.shape_show_outline = stroke is not None or fill is None
     normalize_shape(item)
+    gradient = outline.get('gradient')
+    if fill is not None and gradient:
+        # Canvas points to the shape box, now that the box fits the outline.
+        from ..utils.shape_gradient import set_gradient_record
+        set_gradient_record(item, {
+            'type': gradient['type'], 'spread': gradient['spread'],
+            'start': shape_geometry.canvas_to_unit(item, gradient['start']),
+            'end': shape_geometry.canvas_to_unit(item, gradient['end']),
+            'stops': gradient['stops']})
     return item
 
 
@@ -1787,6 +1800,10 @@ def import_svg_shapes(context, settings, text, center, target_size=0.0):
             skipped += 1
             continue
         outline = dict(outline, stroke_width=outline['stroke_width'] * scale)
+        if outline.get('gradient'):
+            outline['gradient'] = dict(outline['gradient'],
+                                       start=place(outline['gradient']['start']),
+                                       end=place(outline['gradient']['end']))
         groups = contour_groups(contours, outline['fill_rule'])
         for number, group in enumerate(groups):
             records = [(*record, contour) for contour, index in enumerate(group)

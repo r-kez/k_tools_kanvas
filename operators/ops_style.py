@@ -29,6 +29,9 @@ def copy_style(item):
     for name in names:
         value = getattr(item, name)
         values[name] = tuple(value) if hasattr(value, '__len__') and not isinstance(value, str) else value
+    if item.item_type == 'SHAPE':
+        from ..utils.shape_gradient import gradient_record
+        values['gradient'] = gradient_record(item)
     _clipboard['kind'] = item.item_type
     _clipboard['values'] = values
     return True
@@ -43,7 +46,11 @@ def apply_style(item):
     if item.item_type != _clipboard['kind']:
         return False
     for name, value in _clipboard['values'].items():
-        setattr(item, name, value)
+        if name == 'gradient':
+            from ..utils.shape_gradient import set_gradient_record
+            set_gradient_record(item, value)
+        else:
+            setattr(item, name, value)
     return True
 
 
