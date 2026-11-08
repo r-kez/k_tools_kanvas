@@ -26,6 +26,7 @@ An item belongs to at most one group. If all the grouped items were inside the s
 - **Select:** click any item of the group to select the whole group. `Ctrl`+click selects that item alone, so you can move or edit it without ungrouping.
 - **Box select:** a box that touches a group selects the group.
 - **Move, delete, duplicate:** act on every member. Deleting a group deletes its items. Duplicating a group copies all its items into a new group.
+- **Rotate and scale:** with the group selected, press `R` or `S`. Every member turns or scales around the middle of the group, and the group box fits the result. The scale is the same in both directions. Text cards move and scale with the group but stay upright, since cards never rotate. Arrows attached to the members follow. `Esc` or right-click cancels. A group has no rotation or scale of its own: each member keeps its new rotation and size, also after **Ungroup**.
 - **Lock and hide:** the lock and eye in the item list apply to every member.
 - **Frames:** items dropped near a group do not join it. Only `Ctrl + G` adds items.
 
@@ -33,7 +34,7 @@ A group is shown only while it is selected: a thin dashed outline around its ite
 
 ## In the item list
 
-A group is listed as a **Group** item with its members below it. Use the arrow to collapse it, like a frame. A group with no items left is removed automatically.
+A group is listed as a **Group** item with its members below it, and moves up or down the stack with them (see [Layers](transforms.md#layers)). Use the arrow to collapse it, like a frame. A group with no items left is removed automatically.
 
 ## Related pages
 

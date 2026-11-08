@@ -15,7 +15,9 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 | Wheel | Zoom. Over a long text card, scrolls the card instead (see [Text cards](text-cards.md#resizing-and-long-text)) |
 | `Ctrl` + wheel | Opacity of the image under the pointer |
 | `Shift` + wheel | Scale of the active image |
-| `Alt` + wheel | Layer order of the image under the pointer |
+| `Alt` + wheel | Move the item under the pointer up or down the stack |
+| `Page Up` / `Page Down` | Move the selected items one step up (front) or down (back) the list |
+| `Shift + Page Up` / `Shift + Page Down` | Move the selected items to the front / back |
 | Right click | Context menu |
 | `Ctrl` + click on a link in a card | Open the link |
 
@@ -62,10 +64,12 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 | Hold `F` while moving | Release the item from its frame |
 | `Alt + U` | Release selected items from their frame |
 | Hold `A`, then drag | Quick arrow |
+| `Shift + P` | Pen: draw a free path (in Edit Vertices: a new contour of the shape) |
+| `Ctrl + P` | Polygon: draw a closed polygon click by click |
 
 ## Edit Vertices
 
-These work while a shape is in **Edit Vertices** (see [Shapes](shapes.md#editing-vertices)).
+Select one shape and press `E` to enter **Edit Vertices** (see [Shapes](shapes.md#editing-vertices)). These work while it is on.
 
 | Shortcut | Action |
 | --- | --- |
@@ -78,10 +82,15 @@ These work while a shape is in **Edit Vertices** (see [Shapes](shapes.md#editing
 | Drag a handle of a selected vertex | Shape the curve |
 | `V` | Vertex type: Sharp, Auto, Aligned, Mirrored or Free |
 | `Ctrl + click` an edge | Add a vertex there |
+| `Ctrl + click` away from the outline | Add a vertex there, after the selected one (an open path grows from that end) |
+| `L` / `Shift + L` | Select the contour under the pointer / add it |
+| `G`, `R`, `S` | Move, rotate, scale the selected vertices |
+| `Shift + P` | Draw a new contour of the shape |
 | `X` or `Delete` | Delete the selected vertices |
 | `Ctrl + click` a vertex | Delete that vertex |
 | `Ctrl` / `Shift + Ctrl` while dragging | Snap to the grid / a finer grid |
-| `Esc` | Leave Edit Vertices |
+| Drag a vertex with **Vertices** snapping on | Snap to the vertices of other shapes |
+| `E` or `Esc` | Leave Edit Vertices |
 
 ## Mask and Color editing
 

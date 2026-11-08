@@ -1,12 +1,14 @@
 """Read and write Kanvas shapes as SVG.
 
-Reading turns every closed outline of an SVG file (paths, rectangles, circles, ellipses,
-polygons and polylines, inside groups and transforms) into a list of cubic segments
-with its fill and stroke. Each outline becomes one shape: shapes have a single closed
-contour, so a hole in a path becomes a separate shape on top.
+Reading turns every element of an SVG file (paths, rectangles, circles, ellipses,
+polygons and polylines, inside groups and transforms) into contours of cubic segments
+with its fill and stroke. Each element becomes one shape, and the subpaths of a path
+become the contours of that shape, so holes stay holes (see `contour_groups` for the
+`nonzero` fill rule).
 
 Writing gives one <path> per shape, with the curve exactly as stored (Bezier handles
-become cubic segments, rotation and scale are baked into the coordinates).
+become cubic segments, rotation and scale are baked into the coordinates); a shape
+with several contours writes one subpath per contour and `fill-rule="evenodd"`.
 
 Points here are canvas points (y up). SVG uses y down, so y is flipped on the way in
 and out. Nothing here needs bpy except `export_svg`, which reads shape items.
@@ -343,7 +345,8 @@ def _rect_segments(x, y, w, h, rx, ry):
 # --- styles ----------------------------------------------------------------------------
 
 _INHERITED = ('fill', 'stroke', 'stroke-width', 'fill-opacity', 'stroke-opacity',
-              'stroke-dasharray', 'display', 'visibility')
+              'stroke-dasharray', 'display', 'visibility', 'fill-rule', 'stroke-linejoin',
+              'stroke-linecap')
 
 
 def _style_of(element, classes):
@@ -394,10 +397,12 @@ def _float(value, default=0.0):
 def parse_svg(text):
     """Every outline of an SVG document.
 
-    Returns [{'segments': [...], 'closed': bool, 'name': str, 'fill': color or None,
-    'fill_opacity': float, 'stroke': color or None, 'stroke_width': float,
-    'stroke_opacity': float, 'dashed': bool}], with points in canvas space (y up) and
-    every transform already applied.
+    Returns one entry per drawn element: [{'contours': [segments, ...], 'name': str,
+    'fill': color or None, 'fill_opacity': float, 'fill_rule': 'nonzero' or 'evenodd',
+    'stroke': color or None, 'stroke_width': float, 'stroke_opacity': float,
+    'dashed': bool}], with points in canvas space (y up) and every transform already
+    applied. Each contour is a list of cubic segments; 'closed' says, per contour,
+    whether the subpath ended with Z (rectangles, circles and polygons always do).
     """
     root = ET.fromstring(text)
     classes = _css_classes(root)
@@ -432,33 +437,43 @@ def parse_svg(text):
             if rx > 0 and ry > 0:
                 found = [(_ellipse_segments(_float(element.get('cx')), _float(element.get('cy')),
                                             rx, ry), True)]
+        elif tag == 'line':
+            start = (_float(element.get('x1')), _float(element.get('y1')))
+            end = (_float(element.get('x2')), _float(element.get('y2')))
+            if start != end:
+                found = [([_line(start, end)], False)]
         elif tag in {'polygon', 'polyline'}:
             values = [float(v) for v in re.findall(_NUMBER, element.get('points') or '')]
             points = list(zip(values[0::2], values[1::2]))
             if len(points) >= 2:
-                found = [([_line(a, b) for a, b in zip(points, points[1:] + points[:1])],
-                          tag == 'polygon')]
+                ends = points[1:] + points[:1] if tag == 'polygon' else points[1:]
+                found = [([_line(a, b) for a, b in zip(points, ends)], tag == 'polygon')]
         for child in element:
             visit(child, matrix, style, opacity)
         if not found:
             return
         scale = math.sqrt(abs(matrix[0] * matrix[3] - matrix[1] * matrix[2])) or 1.0
-        fill = parse_color(style.get('fill', 'black'))
+        # A <line> is never filled, whatever its fill says.
+        fill = None if tag == 'line' else parse_color(style.get('fill', 'black'))
         stroke = parse_color(style.get('stroke', 'none'))
         dash = style.get('stroke-dasharray', 'none').strip().lower()
-        for index, (segments, closed) in enumerate(found):
-            flipped = [tuple((x, -y) for x, y in (apply(matrix, p) for p in segment))
-                       for segment in segments]
-            name = element.get('id') or ''
-            if name and len(found) > 1:
-                name = f'{name} {index + 1}'
-            outlines.append({
-                'segments': flipped, 'closed': closed, 'name': name,
-                'fill': fill, 'fill_opacity': _float(style.get('fill-opacity'), 1.0) * opacity,
-                'stroke': stroke, 'stroke_width': _float(style.get('stroke-width'), 1.0) * scale,
-                'stroke_opacity': _float(style.get('stroke-opacity'), 1.0) * opacity,
-                'dashed': dash not in {'', 'none', '0'},
-            })
+        contours = [[tuple((x, -y) for x, y in (apply(matrix, p) for p in segment))
+                     for segment in segments] for segments, _closed in found]
+        closed = [flag for _segments, flag in found]
+        rule = style.get('fill-rule', 'nonzero').strip().lower()
+        outlines.append({
+            'contours': contours, 'closed': closed, 'name': element.get('id') or '',
+            'fill': fill, 'fill_opacity': _float(style.get('fill-opacity'), 1.0) * opacity,
+            'fill_rule': 'evenodd' if rule == 'evenodd' else 'nonzero',
+            'stroke': stroke, 'stroke_width': _float(style.get('stroke-width'), 1.0) * scale,
+            'stroke_opacity': _float(style.get('stroke-opacity'), 1.0) * opacity,
+            'dashed': dash not in {'', 'none', '0'},
+            'join': {'miter': 'MITER', 'miter-clip': 'MITER', 'arcs': 'MITER', 'bevel': 'BEVEL',
+                     'round': 'ROUND'}.get(style.get('stroke-linejoin', 'miter').strip().lower(),
+                                           'MITER'),
+            'cap': {'butt': 'FLAT', 'square': 'SQUARE', 'round': 'ROUND'}.get(
+                style.get('stroke-linecap', 'butt').strip().lower(), 'FLAT'),
+        })
 
     visit(root, IDENTITY, {}, 1.0)
     return outlines
@@ -468,19 +483,29 @@ def _close(a, b, eps):
     return abs(a[0] - b[0]) <= eps and abs(a[1] - b[1]) <= eps
 
 
-def outline_records(segments, eps=1e-6):
-    """Vertex records (co, type, left, right) of a closed outline, in canvas space.
+def outline_records(segments, eps=1e-6, closed=True):
+    """Vertex records (co, type, left, right) of an outline, in canvas space.
 
-    Zero-length segments are dropped and an open outline is closed with a straight
-    edge. A vertex whose handles both sit on it is Sharp; handles in line are Aligned,
-    or Mirrored when they also have the same length; anything else is Free. Returns []
-    when fewer than three vertices remain.
+    Zero-length segments are dropped. Closed (the default), an open outline is closed
+    with a straight edge and fewer than three vertices give []. With `closed` off, the
+    path keeps its two ends: one vertex per segment start plus the last end, and fewer
+    than two give []. A vertex whose handles both sit on it is Sharp; handles in line
+    are Aligned, or Mirrored when they also have the same length; anything else is Free.
     """
     from .shape_geometry import split_cubic
     cleaned = [s for s in segments if not (_close(s[0], s[3], eps) and _close(s[1], s[0], eps)
                                            and _close(s[2], s[3], eps))]
     if not cleaned:
         return []
+    if not closed:
+        if _close(cleaned[-1][3], cleaned[0][0], eps):
+            closed = True   # it comes back to its start: an outline after all
+        else:
+            ends = [segment[0] for segment in cleaned] + [cleaned[-1][3]]
+            lefts = [ends[0]] + [segment[2] for segment in cleaned]
+            rights = [segment[1] for segment in cleaned] + [ends[-1]]
+            return [(co, _vertex_kind(co, left, right, eps), left, right)
+                    for co, left, right in zip(ends, lefts, rights)]
     if not _close(cleaned[-1][3], cleaned[0][0], eps):
         cleaned.append(_line(cleaned[-1][3], cleaned[0][0]))
     # A closed outline needs three vertices: split curved segments until it has them.
@@ -492,29 +517,83 @@ def outline_records(segments, eps=1e-6):
         i = curved[0]
         first, second = split_cubic(cleaned[i], 0.5)
         cleaned[i:i + 1] = [first, second]
-    count = len(cleaned)
     records = []
     for i, segment in enumerate(cleaned):
         co = segment[0]
         left = cleaned[i - 1][2]
         right = segment[1]
-        at_left, at_right = _close(left, co, eps), _close(right, co, eps)
-        if at_left and at_right:
-            kind = 'SHARP'
-        elif at_left or at_right:
-            kind = 'FREE'
-        else:
-            ax, ay = co[0] - left[0], co[1] - left[1]
-            bx, by = right[0] - co[0], right[1] - co[1]
-            la, lb = math.hypot(ax, ay), math.hypot(bx, by)
-            cross = (ax * by - ay * bx) / (la * lb)
-            if abs(cross) < 1e-4 and ax * bx + ay * by > 0:
-                kind = 'MIRRORED' if abs(la - lb) <= max(eps, 1e-4 * max(la, lb)) else 'ALIGNED'
-            else:
-                kind = 'FREE'
-        records.append((co, kind, left, right))
-    assert len(records) == count
+        records.append((co, _vertex_kind(co, left, right, eps), left, right))
     return records
+
+
+def _vertex_kind(co, left, right, eps):
+    at_left, at_right = _close(left, co, eps), _close(right, co, eps)
+    if at_left and at_right:
+        return 'SHARP'
+    if at_left or at_right:
+        return 'FREE'
+    ax, ay = co[0] - left[0], co[1] - left[1]
+    bx, by = right[0] - co[0], right[1] - co[1]
+    la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+    cross = (ax * by - ay * bx) / (la * lb)
+    if abs(cross) < 1e-4 and ax * bx + ay * by > 0:
+        return 'MIRRORED' if abs(la - lb) <= max(eps, 1e-4 * max(la, lb)) else 'ALIGNED'
+    return 'FREE'
+
+
+def _sampled(records):
+    """A few points along each edge of a closed record outline, for nesting tests."""
+    from .shape_geometry import cubic
+    points = []
+    for i, (co, _, _, right) in enumerate(records):
+        following = records[(i + 1) % len(records)]
+        controls = (co, right, following[2], following[0])
+        points.extend(cubic(controls, t) for t in (0.0, 0.25, 0.5, 0.75))
+    return points
+
+
+def contour_groups(contours, fill_rule='evenodd'):
+    """Split an element's contours (vertex record lists) into the shapes they make.
+
+    Kanvas fills with the even-odd rule. With `evenodd`, every contour goes into one
+    shape. With `nonzero`, a contour wound the other way round from the contour around
+    it is a hole, as in even-odd; one wound the same way would be filled twice over
+    (no hole), so it starts a shape of its own, drawn on top. Returns lists of indices,
+    outer shapes first.
+    """
+    from .shape_geometry import point_in_polygon, signed_area
+    if fill_rule == 'evenodd' or len(contours) < 2:
+        return [list(range(len(contours)))] if contours else []
+    rings = [_sampled(records) for records in contours]
+    areas = [signed_area(ring) for ring in rings]
+    parents = []
+    for i, ring in enumerate(rings):
+        holders = [j for j, other in enumerate(rings)
+                   if j != i and abs(areas[j]) > abs(areas[i])
+                   and point_in_polygon(ring[0], other)]
+        parents.append(min(holders, key=lambda j: abs(areas[j])) if holders else None)
+    roots = {}
+
+    def root(i):
+        if i not in roots:
+            parent = parents[i]
+            if parent is None or (areas[i] > 0) == (areas[parent] > 0):
+                roots[i] = i
+            else:
+                roots[i] = root(parent)
+        return roots[i]
+
+    depth = {}
+
+    def level(i):
+        if i not in depth:
+            depth[i] = 0 if parents[i] is None else level(parents[i]) + 1
+        return depth[i]
+
+    groups = {}
+    for i in range(len(contours)):
+        groups.setdefault(root(i), []).append(i)
+    return [groups[key] for key in sorted(groups, key=lambda key: (level(key), key))]
 
 
 # --- writing ---------------------------------------------------------------------------
@@ -533,25 +612,53 @@ def shape_path_data(item):
     """SVG path data of a shape's outline, rotation and scale included."""
     from . import shape_geometry as sg
     records = sg.item_records(item)
-    if len(records) < sg.MIN_VERTICES:
+    closed = sg.is_closed(item)
+    least = sg.min_vertices(item)
+    if len(records) < least:
         return ''
-    handles = sg.effective_handles(records)
+    handles = sg.effective_handles(records, closed)
 
     def point(unit):
         x, y = sg.unit_to_canvas(item, unit)
         return f'{_num(x)} {_num(-y)}'
 
-    parts = [f'M {point(records[0][0])}']
-    count = len(records)
-    for i in range(count):
-        controls = sg.segment_controls(records, handles, i)
-        if sg.is_straight(controls):
-            if i < count - 1:
-                parts.append(f'L {point(controls[3])}')
-        else:
-            parts.append(f'C {point(controls[1])} {point(controls[2])} {point(controls[3])}')
-    parts.append('Z')
+    if getattr(item, 'shape_corner_radius', 0.0) > 0.0:
+        # Rounded corners exist only in the drawn outline: write that outline.
+        return ' '.join('M ' + ' L '.join(f'{_num(x)} {_num(-y)}' for x, y in ring)
+                        + (' Z' if closed else '')
+                        for ring in sg.outlines(item) if len(ring) >= least)
+    parts = []
+    for start, stop in sg.contour_ranges(records):
+        if stop - start < least:
+            continue
+        parts.append(f'M {point(records[start][0])}')
+        for i in range(start, stop if closed else stop - 1):
+            controls = sg.segment_controls(records, handles, i)
+            if sg.is_straight(controls):
+                if i < stop - 1:
+                    parts.append(f'L {point(controls[3])}')
+            else:
+                parts.append(f'C {point(controls[1])} {point(controls[2])} {point(controls[3])}')
+        if closed:
+            parts.append('Z')
     return ' '.join(parts)
+
+
+def _stroke_attributes(item, dash_pattern):
+    width = item.shape_line_width
+    join = {'ROUND': 'round', 'MITER': 'miter', 'BEVEL': 'bevel'}[item.shape_line_join]
+    cap = ('round' if item.shape_line_style == 'DOTTED'
+           else {'ROUND': 'round', 'FLAT': 'butt', 'SQUARE': 'square'}[item.shape_line_cap])
+    attributes = [f'stroke="{hex_color(item.shape_line_color)}"',
+                  f'stroke-width="{_num(width)}"',
+                  f'stroke-opacity="{_num(item.opacity)}"',
+                  f'stroke-linejoin="{join}"', f'stroke-linecap="{cap}"']
+    if join == 'miter':
+        attributes.append('stroke-miterlimit="4"')
+    if item.shape_line_style != 'SOLID':
+        dash, gap = dash_pattern(item.shape_line_style, width)
+        attributes.append(f'stroke-dasharray="{_num(dash)} {_num(gap)}"')
+    return attributes
 
 
 def export_svg(items):
@@ -570,21 +677,25 @@ def export_svg(items):
             left, right = min(left, x - margin), max(right, x + margin)
             bottom, top = min(bottom, y - margin), max(top, y + margin)
         attributes = [f'id="{_escape(item.name)}"', f'd="{data}"']
+        if data.count('M ') > 1:
+            attributes.append('fill-rule="evenodd"')
         if item.shape_show_fill:
             attributes.append(f'fill="{hex_color(item.shape_fill_color)}"')
             attributes.append(f'fill-opacity="{_num(item.shape_fill_opacity * item.opacity)}"')
         else:
             attributes.append('fill="none"')
-        if item.shape_show_outline:
-            width = item.shape_line_width
-            attributes += [f'stroke="{hex_color(item.shape_line_color)}"',
-                           f'stroke-width="{_num(width)}"',
-                           f'stroke-opacity="{_num(item.opacity)}"',
-                           'stroke-linejoin="round"', 'stroke-linecap="round"']
-            if item.shape_line_style != 'SOLID':
-                dash, gap = dash_pattern(item.shape_line_style, width)
-                attributes.append(f'stroke-dasharray="{_num(dash)} {_num(gap)}"')
-        bodies.append(f'  <path {" ".join(attributes)}/>')
+        stroke = _stroke_attributes(item, dash_pattern) if item.shape_show_outline else []
+        aligned = stroke and sg.is_closed(item) and item.shape_line_align != 'CENTER'
+        if aligned:
+            # SVG has no inside or outside line: the line goes on a second path, along
+            # the outline moved by half the line width.
+            bodies.append(f'  <path {" ".join(attributes)} stroke="none"/>')
+            line = ' '.join('M ' + ' L '.join(f'{_num(x)} {_num(-y)}' for x, y in points) + ' Z'
+                            for points, _edges in sg.stroke_paths(item) if len(points) >= 2)
+            bodies.append(f'  <path id="{_escape(item.name)} line" d="{line}" fill="none" '
+                          f'{" ".join(stroke)}/>')
+        else:
+            bodies.append(f'  <path {" ".join(attributes + stroke)}/>')
         text = ' '.join(line.value for line in item.text_lines if line.value).strip()
         if item.shape_show_text and text:
             cx, cy = item.location[0], -item.location[1]

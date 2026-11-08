@@ -20,10 +20,16 @@ Locked items cannot be selected, and the box ignores them. Hidden items are not 
 
 ## Layers
 
-Items are drawn in layer order. When several images overlap, the one with the higher layer is on top. The active, selected image is shown in front while you work with it, without changing its stored layer.
+The item list is the stacking order: the higher an item is in the list, the more it is in front on the canvas. Images and shapes mix freely, so a shape can sit behind an image or in front of it. A frame or a group carries everything inside it: moving it up or down moves its content with it, and inside it the items have their own order. New items come in at the top of the list, in front. Selecting, moving or transforming an item never changes the order. A click picks the item in front.
 
-- Hold `Alt` and scroll over an image to move it up or down a layer.
-- Select an item in the list to reach an image that is covered.
+| To move the selected items | How |
+| --- | --- |
+| One step up (to the front) or down (to the back) | `Page Up` / `Page Down`, the ▲ ▼ buttons next to the list, or hold `Alt` and scroll over an item |
+| In front of / behind everything at their level | `Shift + Page Up` / `Shift + Page Down`, or the top and bottom buttons next to the list |
+
+Items move among the items of the same frame or group. Text cards and arrows are always drawn above images and shapes, and frames behind their content. The text inside a shape is drawn with the other canvas text, above every image: when an image covers a shape, the shape's text still shows through.
+
+Select an item in the list to reach an image that is covered.
 
 ## Moving, rotating, and scaling
 
@@ -102,6 +108,7 @@ Open the **Snap** panel. The checkbox in its header turns snapping on or off.
 | --- | --- |
 | **Grid** | Snaps movement and transforms to a grid |
 | **Edges** | Snaps edges and centers to other visible images |
+| **Vertices** | In Edit Vertices, snaps a dragged vertex to the vertices of other shapes. Off by default |
 | **Step** | Grid spacing in canvas units. Default 20 |
 | **Threshold** | How close, in screen pixels, a snap target must be to attract. Default 10 |
 
@@ -137,7 +144,7 @@ Scroll while holding a modifier:
 | --- | --- |
 | `Ctrl` + wheel | Opacity of the image under the pointer (or the active image) |
 | `Shift` + wheel | Scale of the active image |
-| `Alt` + wheel | Layer order of the image under the pointer |
+| `Alt` + wheel | Move the item under the pointer up or down the stack |
 
 Each modifier can be reassigned in **Preferences > Controls**.
 

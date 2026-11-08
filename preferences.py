@@ -17,6 +17,16 @@ def _update_axis_appearance(self, context):
             if area.type == 'NODE_EDITOR':
                 area.tag_redraw()
 
+def _update_shape_fill(self, context):
+    """A new fill method: every shape's fill is rebuilt on the next redraw."""
+    from .utils import shape_geometry
+    from .utils.gpu import gpu_shape
+    shape_geometry._fill_unit_cache.clear()
+    gpu_shape._geometry_cache.clear()
+    gpu_shape._batch_cache.clear()
+    _update_axis_appearance(self, context)
+
+
 class KANVAS_OT_prefs_select_dir(bpy.types.Operator):
     bl_idname = "kanvas.prefs_select_dir"
     bl_label = "Select Directory"
@@ -60,6 +70,21 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         name="Assets Folder",
         description="Folder where reference images will be stored relative to the .blend file",
         default="//assets/kanvas"
+    )
+
+    shape_fill: bpy.props.EnumProperty(  # type: ignore
+        name="Shape Fill",
+        description="How the inside of shapes is filled",
+        items=[
+            ('DELAUNAY', "Exact (Delaunay)",
+             "Fills every shape correctly, also outlines that cross themselves or each other "
+             "(combined shapes that overlap). Slower to rebuild on very large shapes"),
+            ('FAST', "Fast",
+             "Blender's quick polygon filler. Fine for outlines that do not cross; crossing "
+             "ones may be filled wrongly"),
+        ],
+        default='DELAUNAY',
+        update=_update_shape_fill,
     )
 
     # Design Tokens
@@ -145,6 +170,35 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         min=0.0, max=1.0, update=_update_axis_appearance,
     )
 
+    focus_dim_enabled: bpy.props.BoolProperty( #type: ignore
+        name="Focus While Editing",
+        description=("Dim the rest of the canvas while an image's Mask or Color, or a shape's "
+                     "vertices, are being edited"),
+        default=True, update=_update_axis_appearance,
+    )
+    focus_dim_amount: bpy.props.FloatProperty( #type: ignore
+        name="Dim",
+        description="How dark the rest of the canvas becomes while editing",
+        default=0.55, min=0.05, max=0.95, subtype='FACTOR',
+        update=_update_axis_appearance,
+    )
+    focus_desaturate: bpy.props.BoolProperty( #type: ignore
+        name="Desaturate Other Images",
+        description=("While editing, show the other images with less color. Only the display "
+                     "changes: each image keeps its own Saturation"),
+        default=False, update=_update_axis_appearance,
+    )
+    focus_desaturate_amount: bpy.props.FloatProperty( #type: ignore
+        name="Amount",
+        description="How much color the other images lose while editing (1: grey)",
+        default=1.0, min=0.0, max=1.0, subtype='FACTOR',
+        update=_update_axis_appearance,
+    )
+    canvas_axes_enabled: bpy.props.BoolProperty( #type: ignore
+        name="Axis Lines",
+        description="Draw the X and Y lines through the canvas origin",
+        default=True, update=_update_axis_appearance,
+    )
     color_x_axis: bpy.props.FloatVectorProperty( #type: ignore
         name="X Axis Color",
         description="Color of the horizontal canvas origin axis",
@@ -417,6 +471,11 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         box.prop(self, "use_optimization")
         box.prop(self, "texture_budget_mb")
 
+        col.separator()
+        box = col.box()
+        box.label(text="Shapes", icon='MESH_PLANE')
+        box.prop(self, "shape_fill")
+
         if self.use_optimization:
             opt_col = box.column(align=True)
             opt_col.prop(self, "max_image_resolution")
@@ -522,11 +581,28 @@ class KanvasPreferences(bpy.types.AddonPreferences):
             row.prop(self, "canvas_grid_color", index=3, text="Opacity", slider=True)
         col.separator()
 
+        # Editing Focus Box
+        box = col.box()
+        box.label(text="Editing Focus", icon='HIDE_OFF')
+        row = box.row(align=True)
+        row.prop(self, "focus_dim_enabled")
+        sub = row.row(align=True)
+        sub.enabled = self.focus_dim_enabled
+        sub.prop(self, "focus_dim_amount", slider=True)
+        row = box.row(align=True)
+        row.prop(self, "focus_desaturate")
+        sub = row.row(align=True)
+        sub.enabled = self.focus_desaturate
+        sub.prop(self, "focus_desaturate_amount", slider=True)
+        col.separator()
+
         # Canvas Axes Box
         box = col.box()
         box.label(text="Canvas Axes", icon='ORIENTATION_GLOBAL')
+        box.prop(self, "canvas_axes_enabled")
 
         style_col = box.column(align=True)
+        style_col.enabled = self.canvas_axes_enabled
         row = style_col.row(align=True)
         row.prop(self, "color_x_axis", text="X Axis Color")
         row.prop(self, "color_x_axis", index=3, text="Opacity", slider=True)

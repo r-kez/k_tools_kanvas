@@ -1,5 +1,18 @@
 import bpy
 
+def _stack_neworder(settings):
+    """Show the list in stacking order (front on top), even before the collection has
+    been reordered to match."""
+    from ..utils.item_geometry import stack_order
+    order = stack_order(settings)
+    if order == list(range(len(order))):
+        return []
+    position = [0] * len(order)
+    for rank, index in enumerate(order):
+        position[index] = rank
+    return position
+
+
 class KANVAS_UL_image_list(bpy.types.UIList):
     def filter_items(self, context, data, propname):
         from ..utils.gpu import get_frame
@@ -30,7 +43,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
                     visible.update(child_index for child_index, chain in enumerate(ancestors)
                                    if item.frame_node_name in chain)
             return [self.bitflag_filter_item if index in visible else 0
-                    for index in range(len(items))], []
+                    for index in range(len(items))], _stack_neworder(data)
         collapsed = {item.frame_node_name for item in items
                      if item.item_type == 'FRAME' and item.list_collapsed}
         def visible(item):
@@ -43,7 +56,7 @@ class KANVAS_UL_image_list(bpy.types.UIList):
                 name = parent.parent_frame if parent else ''
             return True
         flags = [self.bitflag_filter_item if visible(item) else 0 for item in items]
-        return flags, []
+        return flags, _stack_neworder(data)
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         is_frame = (getattr(item, "item_type", 'IMAGE') == 'FRAME')

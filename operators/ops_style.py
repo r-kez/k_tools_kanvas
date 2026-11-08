@@ -11,7 +11,8 @@ STYLE_PROPERTIES = {
               'use_color_correction', 'value_gray', 'value_levels'),
     'TEXT': ('text_color', 'text_background', 'text_opacity', 'text_font_size'),
     'SHAPE': ('shape_show_fill', 'shape_fill_color', 'shape_fill_opacity', 'shape_show_outline',
-              'shape_line_color', 'shape_line_width', 'shape_line_style', 'text_color',
+              'shape_line_color', 'shape_line_width', 'shape_line_style', 'shape_line_join',
+              'shape_line_cap', 'shape_line_align', 'shape_corner_radius', 'text_color',
               'text_font_size'),
     'FRAME': ('frame_color', 'frame_opacity', 'frame_font_size'),
 }

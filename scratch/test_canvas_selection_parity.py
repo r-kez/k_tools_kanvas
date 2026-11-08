@@ -29,8 +29,16 @@ try:
             item.location = (0, 0)
         settings.images[0].is_selected = True
         _set_canvas_active(settings, image_index=0)
+        # The list is the stack, top in front: with equal layers the first item is in
+        # front. Selecting the second one does not lift it, so a click still picks the first.
+        settings.images[0].is_selected = False
+        settings.images[1].is_selected = True
+        _set_canvas_active(settings, image_index=1)
         assert image_draw_indices(settings) == [1, 0]
         assert KanvasInteractionHelpers()._find_image_at_pos(bpy.context, (0, 0))[0] == 0
+        settings.images[1].is_selected = False
+        settings.images[0].is_selected = True
+        _set_canvas_active(settings, image_index=0)
         assert [item.z_index for item in settings.images] == [0, 0]
 
         for name in ('Back card', 'Front card'):

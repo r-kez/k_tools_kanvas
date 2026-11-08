@@ -179,8 +179,11 @@ class KANVAS_OT_CreateFrame(bpy.types.Operator):
                    if item.is_selected and (item.item_type in {'TEXT', 'SHAPE', 'FRAME'}
                                             or (item.item_type == 'IMAGE' and item.image_data))]
         targets = _selection_roots(settings, targets)
+        from ..utils.item_geometry import front_z
+        layer = max((item.z_index for item in targets), default=front_z(settings) - 1)
         frame_label = unique_item_name(settings, self.label)
         frame = settings.images.add()
+        frame.z_index = layer if targets else front_z(settings)
         frame.item_id = uuid.uuid4().hex
         frame.item_type = 'FRAME'
         frame.frame_node_name = 'kanvas_' + uuid.uuid4().hex

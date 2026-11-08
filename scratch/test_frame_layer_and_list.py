@@ -66,7 +66,9 @@ try:
     back.list_collapsed = True
     flags, order = KANVAS_UL_image_list.filter_items(
         SimpleNamespace(bitflag_filter_item=1), bpy.context, settings, 'images')
-    assert flags == [1, 1, 0, 1] and order == [], flags
+    # The list shows the stacking tree, top in front: the front frame, then the back
+    # frame with its child right under it, then the loose image.
+    assert flags == [1, 1, 0, 1] and order == [1, 0, 2, 3], (flags, order)
     assert settings.active_image_index == active and child.is_selected
     assert child.show_in_editor
     settings.list_search = 'child'

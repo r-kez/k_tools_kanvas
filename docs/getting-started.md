@@ -29,7 +29,8 @@ Everything is added to the board from one of these places:
 
 | To add | How |
 | --- | --- |
-| Images | Drag image files from your file browser onto the canvas, or use **Add > Image** and **Add > Multiple Images** |
+| Images | Drag image files from your file browser onto the canvas (they land where you drop them), or use **Add > Image** and **Add > Multiple Images** |
+| Vector drawings | Drag `.svg` files onto the canvas, or use **Add > Shape > Import SVG...** |
 | Pasted images | Copy an image file or image pixels, then press `Ctrl + V` over the canvas |
 | A PureRef scene | Drag a `.pur` file onto the canvas, or use **Add > PureRef Scene (.pur)** |
 | A note | **Add > Text Card** |

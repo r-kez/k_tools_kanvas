@@ -18,7 +18,8 @@ from .gpu_arrow import draw_arrows, draw_arrow_labels, draw_text_anchor_handles
 from .gpu_checklist import draw_checklist_links
 from .gpu_recenter import draw_recenter_prompt
 from .gpu_common import begin_draw_pass, end_draw_pass, value_view_uniforms
-from ..item_geometry import item_bounds, image_draw_indices, text_card_draw_indices
+from ..item_geometry import (item_bounds, image_draw_indices, layer_draw_indices,
+                             text_card_draw_indices)
 
 def get_frame(settings, frame_name):
     return next((item for item in settings.images
@@ -145,6 +146,14 @@ def can_attach_to_frame(settings, item, frame_name):
 
 
 def _ordered_items(settings):
+    """The items in list order: the stacking order, front first, frames before their
+    children (see `item_geometry.stack_order`)."""
+    from ..item_geometry import stack_order
+    return [settings.images[index] for index in stack_order(settings)]
+
+
+def _ordered_items_by_frame(settings):
+    """The former list order (frames first, then loose items), kept for reference."""
     items = list(settings.images)
     frames = [item for item in items if item.item_type == 'FRAME']
     frame_names = {frame.frame_node_name for frame in frames}
@@ -600,7 +609,7 @@ def _draw_callback_px(*args):
     # The axes form the bottom layer of the Kanvas items.
     if settings.show_debug_grid:
         try:
-            draw_axes()
+            draw_axes(view_bounds)
         except Exception:
             pass
 
@@ -624,8 +633,15 @@ def _draw_callback_px(*args):
 
     invalidate_texture_cache()
 
-    for image_index in image_draw_indices(settings):
+    # Images and shapes share one stack: draw them together, back to front.
+    from .gpu_shape import draw_shape_body
+    from .gpu_focus import saturation_scale
+    faded = saturation_scale(settings)   # other images greyed out while editing
+    for image_index in layer_draw_indices(settings):
         img_item = settings.images[image_index]
+        if img_item.item_type == 'SHAPE':
+            draw_shape_body(img_item, view_pixel_size, view_bounds)
+            continue
         if not image_intersects_view(img_item, view_bounds):
             continue
 
@@ -654,12 +670,15 @@ def _draw_callback_px(*args):
                     print(f"Kanvas: Could not build color markup for {img_item.name}: {exc}")
 
             value_mode, value_levels = value_view_uniforms(img_item)
+            saturation = img_item.saturation
+            if faded is not None and img_item.item_id != faded[0]:
+                saturation *= faded[1]
             if img_item.mask_editing:
                 tex.draw(
                     img_item.location, final_scale, img_item.shear_xy,
                     img_item.rotation, img_item.opacity * 0.22,
                     img_item.color_tint, brightness=img_item.brightness,
-                    contrast=img_item.contrast, saturation=img_item.saturation,
+                    contrast=img_item.contrast, saturation=saturation,
                     flip_h=img_item.flip_h, flip_v=img_item.flip_v,
                     use_color_correction=img_item.use_color_correction,
                     value_mode=value_mode, value_levels=value_levels,
@@ -674,7 +693,7 @@ def _draw_callback_px(*args):
                 img_item.color_tint,
                 brightness=img_item.brightness,
                 contrast=img_item.contrast,
-                saturation=img_item.saturation,
+                saturation=saturation,
                 flip_h=img_item.flip_h,
                 flip_v=img_item.flip_v,
                 use_color_correction=img_item.use_color_correction,
@@ -698,10 +717,10 @@ def _draw_callback_px(*args):
             except Exception as exc:
                 print(f"Kanvas comparison: {exc}")
 
-    # Shapes annotate the images, so they sit above them and below the arrows.
+    # Selection outlines and vertex handles of shapes go above every layer.
     try:
-        from .gpu_shape import draw_shapes
-        draw_shapes(settings, view_pixel_size, view_bounds)
+        from .gpu_shape import draw_shape_overlays
+        draw_shape_overlays(settings, view_pixel_size, view_bounds)
     except Exception as exc:
         print(f"Kanvas shapes: {exc}")
     try:
@@ -828,11 +847,6 @@ def _draw_frame_labels():
     except Exception as exc:
         print(f"Kanvas shape text: {exc}")
     try:
-        from .gpu_shape import draw_vertex_edit_overlay
-        draw_vertex_edit_overlay(settings, context.area, region)
-    except Exception as exc:
-        print(f"Kanvas vertex edit overlay: {exc}")
-    try:
         from .gpu_group import draw_group_labels
         draw_group_labels(settings, region)
     except Exception as exc:
@@ -956,6 +970,18 @@ def _draw_frame_labels():
     except Exception as exc:
         print(f"Kanvas color names: {exc}")
     draw_text_anchor_handles(settings, region)
+    # Editing focus: everything drawn so far is dimmed around the edited item; the
+    # mode badges and panels below stay bright.
+    try:
+        from .gpu_focus import draw_focus_dim
+        draw_focus_dim(settings, region)
+    except Exception as exc:
+        print(f"Kanvas editing focus: {exc}")
+    try:
+        from .gpu_shape import draw_vertex_edit_overlay
+        draw_vertex_edit_overlay(settings, context.area, region)
+    except Exception as exc:
+        print(f"Kanvas vertex edit overlay: {exc}")
     from .gpu_mode_switch import draw_mode_switch
     draw_mode_switch(settings, context.area, region)
     from ...operators.ops_focus import recenter_prompt

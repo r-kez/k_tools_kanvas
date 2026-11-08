@@ -30,21 +30,55 @@ def _clockwise(points):
     return list(reversed(points)) if geometry.signed_area(points) > 0 else list(points)
 
 
-def _outline_strokes(points, style, width, edges=None):
-    """Polylines that draw the closed outline.
+def _fill_fringe(rings, pixel_size, color):
+    """Anti-aliasing fringe around the filled area of every contour.
+
+    The fringe grows to the left of a contour, so the filled side must be on the right:
+    clockwise for an outer contour, counter-clockwise for a hole.
+    """
+    depths = geometry.contour_depths(rings) if len(rings) > 1 else [0]
+    vertices, colors = [], []
+    for ring, depth in zip(rings, depths):
+        if len(ring) < geometry.MIN_VERTICES:
+            continue
+        ordered = _clockwise(ring)
+        if depth % 2:
+            ordered.reverse()
+        ring_vertices, ring_colors = _antialias_fringe(ordered, pixel_size, color)
+        vertices.extend(ring_vertices)
+        colors.extend(ring_colors)
+    return vertices, colors
+
+
+def _contour_strokes(item, style, width):
+    """`_outline_strokes` for every contour of a shape."""
+    points = geometry.outline(item)
+    units = geometry.curve_units(item)
+    closed = geometry.is_closed(item)
+    strokes = []
+    for a, b in geometry.curve_spans(item):
+        if b - a < 2:
+            continue
+        strokes.extend(_outline_strokes(points[a:b], style, width,
+                                        [edge for _, edge, _ in units[a:b]], closed))
+    return strokes
+
+
+def _outline_strokes(points, style, width, edges=None, closed=True):
+    """Polylines that draw the outline (closed, or an open path with `closed` off).
 
     Solid: one stroke per edge, so the round caps give the corners a round join. A
     curved edge is many points but still one stroke (`edges` gives the edge index of
     each point), instead of one stroke per flattened segment.
     """
-    loop = list(points) + [points[0]]
+    loop = list(points) + [points[0]] if closed else list(points)
     if style == 'SOLID':
         if edges is None:
             return [[a, b] for a, b in zip(loop, loop[1:])]
         strokes, current = [], [points[0]]
         for i in range(1, len(loop)):
             current.append(loop[i])
-            if i == len(points) or edges[i] != edges[i - 1]:
+            if i == len(points) or i == len(loop) - 1 or edges[i] != edges[i - 1]:
                 strokes.append(current)
                 current = [loop[i]]
         return strokes
@@ -61,6 +95,42 @@ def _visible(item, view_bounds):
 
 
 _geometry_cache = {}
+
+
+def _line_geometry(item, pixel_size, color):
+    """Triangles and fringe of a shape's line, with its join, cap and alignment.
+
+    Round joins and caps use the same rounded strokes as always; the others are built
+    by `stroke_geometry`. Dots always have round ends, or they would vanish.
+    """
+    width = item.shape_line_width
+    style = item.shape_line_style
+    join = getattr(item, 'shape_line_join', 'ROUND')
+    cap = 'ROUND' if style == 'DOTTED' else getattr(item, 'shape_line_cap', 'ROUND')
+    closed = geometry.is_closed(item)
+    paths = geometry.stroke_paths(item)
+    if join == 'ROUND' and cap == 'ROUND':
+        strokes = []
+        for points, edges in paths:
+            strokes.extend(_outline_strokes(points, style, width, edges, closed))
+        return _stroke_geometry(strokes, width, pixel_size, color)
+    from .. import stroke_geometry
+    pieces = []
+    for points, edges in paths:
+        if style == 'SOLID':
+            pieces.extend(stroke_geometry.contour_stroke(points, edges, closed, width, join, cap))
+        else:
+            dashes = _outline_strokes(points, style, width, edges, closed)
+            pieces.extend(stroke_geometry.dash_stroke(dashes, width, cap))
+    triangles, fringe, fringe_colors = [], [], []
+    feather = min(pixel_size, width * 0.25)
+    for mesh, contour in pieces:
+        triangles.extend(mesh)
+        if len(contour) >= 3:
+            vertices, colors = _antialias_fringe(_clockwise(contour), feather, color)
+            fringe.extend(vertices)
+            fringe_colors.extend(colors)
+    return triangles, fringe, fringe_colors
 
 
 def _stroke_geometry(polylines, thickness, pixel_size, color):
@@ -87,7 +157,9 @@ def shape_draw_geometry(item, pixel_size):
                  tuple(item.location), item.rotation, item.shape_width, item.shape_height,
                  item.scale_master, pixel_size, opacity, item.shape_show_fill,
                  item.shape_fill_opacity, tuple(item.shape_fill_color), item.shape_show_outline,
-                 tuple(item.shape_line_color), item.shape_line_width, item.shape_line_style)
+                 tuple(item.shape_line_color), item.shape_line_width, item.shape_line_style,
+                 item.shape_closed, item.shape_line_join, item.shape_line_cap,
+                 item.shape_line_align, item.shape_corner_radius)
     key = item.as_pointer()
     cached = _geometry_cache.get(key)
     if cached is not None and cached[0] == signature:
@@ -96,44 +168,68 @@ def shape_draw_geometry(item, pixel_size):
     result = {'fill': None, 'line': None}
     line_color = (*item.shape_line_color, opacity)
     if len(points) == 2:
-        # A polygon being drawn click by click: its first segment.
-        result['line'] = (_stroke_geometry([points], item.shape_line_width, pixel_size,
-                                           line_color), line_color)
-    elif len(points) >= geometry.MIN_VERTICES:
+        # A straight line, or a polygon being drawn click by click: its first segment.
+        result['line'] = (_line_geometry(item, pixel_size, line_color), line_color)
+    elif len(points) >= geometry.min_vertices(item):
         if item.shape_show_fill and item.shape_fill_opacity * opacity > 0.0:
             color = (*item.shape_fill_color, item.shape_fill_opacity * opacity)
-            triangles = [points[i] for triangle in geometry.fill_triangles(item)
-                         for i in triangle]
-            fringe, fringe_colors = _antialias_fringe(_clockwise(points), pixel_size, color)
+            triangles = geometry.fill_canvas_triangles(item)
+            fringe, fringe_colors = _fill_fringe(geometry.outlines(item), pixel_size, color)
             result['fill'] = (triangles, fringe, fringe_colors, color)
         if item.shape_show_outline:
-            edges = [edge for _, edge, _ in geometry.curve_units(item)]
-            strokes = _outline_strokes(points, item.shape_line_style,
-                                       item.shape_line_width, edges)
-            result['line'] = (_stroke_geometry(strokes, item.shape_line_width, pixel_size,
-                                               line_color), line_color)
+            result['line'] = (_line_geometry(item, pixel_size, line_color), line_color)
     if len(_geometry_cache) > 512:
         _geometry_cache.clear()
     _geometry_cache[key] = (signature, result)
     return result
 
 
-def _draw_body(shader, smooth, item, pixel_size):
-    parts = shape_draw_geometry(item, pixel_size)
+_batch_cache = {}
+
+
+def _body_batches(shader, smooth, parts):
+    """GPU batches for the parts of `shape_draw_geometry`, in drawing order."""
+    batches = []
+
+    def flat(triangles, color):
+        if triangles:
+            batches.append((False, batch_for_shader(shader, 'TRIS', {'pos': triangles}), color))
+
+    def fringe_batch(fringe, colors):
+        if fringe:
+            batches.append((True, batch_for_shader(smooth, 'TRIS', {
+                'pos': fringe, 'color': colors}), None))
+
     if parts['fill'] is not None:
         triangles, fringe, fringe_colors, color = parts['fill']
-        _triangles(shader, triangles, color)
-        if fringe:
-            smooth.bind()
-            batch_for_shader(smooth, 'TRIS', {
-                'pos': fringe, 'color': fringe_colors}).draw(smooth)
+        flat(triangles, color)
+        fringe_batch(fringe, fringe_colors)
     if parts['line'] is not None:
         (triangles, fringe, fringe_colors), color = parts['line']
-        if fringe:
+        fringe_batch(fringe, fringe_colors)
+        flat(triangles, color)
+    return batches
+
+
+def _draw_body(shader, smooth, item, pixel_size):
+    """Draw the fill and outline. The GPU batches are kept with the cached geometry, so
+    an unchanged shape is drawn without sending anything to the GPU again."""
+    parts = shape_draw_geometry(item, pixel_size)
+    key = item.as_pointer()
+    cached = _batch_cache.get(key)
+    if cached is None or cached[0] is not parts:
+        if len(_batch_cache) > 512:
+            _batch_cache.clear()
+        cached = (parts, _body_batches(shader, smooth, parts))
+        _batch_cache[key] = cached
+    for smooth_colors, batch, color in cached[1]:
+        if smooth_colors:
             smooth.bind()
-            batch_for_shader(smooth, 'TRIS', {
-                'pos': fringe, 'color': fringe_colors}).draw(smooth)
-        _triangles(shader, triangles, color)
+            batch.draw(smooth)
+        else:
+            shader.bind()
+            shader.uniform_float('color', color)
+            batch.draw(shader)
 
 
 def _draw_handle(shader, point, pixel_size, radius=4.5, fill=HANDLE_LIGHT):
@@ -151,9 +247,7 @@ def _draw_selection(shader, smooth, settings, item, pixel_size):
     thickness = max(1.0, 1.5) * pixel_size
     editing = item.shape_edit_vertices and _sole_selection(settings, item)
     if editing:
-        outline = geometry.outline(item)
-        edges = [edge for _, edge, _ in geometry.curve_units(item)]
-        _draw_plain_strokes(shader, smooth, _outline_strokes(outline, 'SOLID', thickness, edges),
+        _draw_plain_strokes(shader, smooth, _contour_strokes(item, 'SOLID', thickness),
                             thickness, pixel_size, color)
         for unit in geometry.edge_midpoints(item):
             _triangles(shader, _circle(geometry.unit_to_canvas(item, unit), 2.6 * pixel_size),
@@ -202,17 +296,21 @@ VERTEX_EDIT_ROWS = (
     ('Drag empty space', 'Box select (Shift adds, Ctrl removes)'),
     ('Ctrl+A / Ctrl+I', 'Select all / invert'),
     ('Drag vertex', 'Move selected vertices'),
+    ('G / R / S', 'Move / rotate / scale selected vertices'),
+    ('L', 'Select the contour under the pointer'),
     ('Drag edge', 'Bend edge (click selects it)'),
     ('Drag handle', 'Shape the curve'),
     ('V', 'Vertex type: Sharp / Auto / Aligned / Mirrored / Free'),
     ('Ctrl+Click edge', 'Add vertex'),
+    ('Ctrl+Click empty space', 'Add vertex (after the selected one)'),
+    ('Shift+P', 'Pen: draw a new contour'),
     ('X / Delete', 'Delete selected vertices'),
     ('Ctrl+Click vertex', 'Delete vertex'),
     ('Ctrl+Drag', 'Snap to grid'),
     ('Shift+Ctrl+Drag', 'Snap to fine grid'),
     ('MMB / Wheel', 'Pan / zoom'),
     ('Ctrl+Z', 'Undo'),
-    ('Esc', 'Exit Edit Vertices'),
+    ('E / Esc', 'Exit Edit Vertices'),
 )
 
 # Header rectangle of the panel from the last redraw, in region pixels, for click tests.
@@ -235,6 +333,9 @@ def vertex_edit_shape(settings):
 
 def vertex_edit_title(item):
     title = f'EDIT VERTICES  |  {item.name}  |  {len(item.shape_vertices)} vertices'
+    contours = len(geometry.item_contour_ranges(item))
+    if contours > 1:
+        title += f' in {contours} contours'
     selected = sum(1 for vertex in item.shape_vertices if vertex.select)
     return f'{title}  |  {selected} selected' if selected else title
 
@@ -258,8 +359,43 @@ def hit_vertex_panel_toggle(settings, region_x, region_y):
     return bounds[0] <= region_x <= bounds[2] and bounds[1] <= region_y <= bounds[3]
 
 
+def draw_shape_body(item, pixel_size, view_bounds):
+    """Fill and line of one shape, at its place in the stack (between images)."""
+    if not _visible(item, view_bounds):
+        return
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    smooth = gpu.shader.from_builtin('SMOOTH_COLOR')
+    old_blend = gpu.state.blend_get()
+    gpu.state.blend_set('ALPHA')
+    try:
+        _draw_body(shader, smooth, item, pixel_size)
+    except Exception as exc:
+        print(f'Kanvas shape {item.name}: {exc}')
+    finally:
+        gpu.state.blend_set(old_blend)
+
+
+def draw_shape_overlays(settings, pixel_size, view_bounds):
+    """Selection outlines and vertex handles of the selected shapes, above everything."""
+    indices = [index for index in shape_draw_indices(settings)
+               if settings.images[index].is_selected and not settings.images[index].is_locked]
+    if not indices:
+        return
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    smooth = gpu.shader.from_builtin('SMOOTH_COLOR')
+    old_blend = gpu.state.blend_get()
+    gpu.state.blend_set('ALPHA')
+    try:
+        for index in indices:
+            item = settings.images[index]
+            if _visible(item, view_bounds):
+                _draw_selection(shader, smooth, settings, item, pixel_size)
+    finally:
+        gpu.state.blend_set(old_blend)
+
+
 def draw_shapes(settings, pixel_size, view_bounds):
-    """POST_VIEW pass: every visible shape, then the selection overlays on top."""
+    """Every visible shape, then the selection overlays on top (shapes only)."""
     indices = shape_draw_indices(settings)
     if not indices:
         return

@@ -24,6 +24,12 @@ See [Images](images.md) for how these work together.
 | **Force 8-bit Depth** | On | Converts HDR and float sources to 8 bits. Shown when Optimization is on |
 | **Texture Memory Budget (MB)** | 2048 | How much estimated GPU memory Kanvas may keep loaded. Above it, the least recently used images are released |
 
+### Shapes
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Shape Fill** | Exact (Delaunay) | How the inside of shapes is filled. **Exact** fills every shape correctly, also outlines that cross themselves or each other (combined shapes that overlap). **Fast** uses Blender's quick polygon filler, which may fill crossing outlines wrongly. The same method is used for every shape. The difference in speed only shows while editing very large shapes: about 20 against 16 ms to rebuild a shape of 1920 vertices |
+
 See [Performance and memory](performance.md) for guidance.
 
 ### Interface
@@ -56,7 +62,7 @@ Install and download buttons for the optional segmentation feature, with the amo
 | --- | --- | --- |
 | **Opacity Scroll Modifier** | `Ctrl` | Hold while scrolling to change image opacity |
 | **Scale Scroll Modifier** | `Shift` | Hold while scrolling to scale the active image |
-| **Layer Scroll Modifier** | `Alt` | Hold while scrolling to change the drawing order |
+| **Layer Scroll Modifier** | `Alt` | Hold while scrolling over an item to move it up or down the stack (the item list) |
 
 Inside a Kanvas Tree these replace Blender's own use of the wheel with a modifier (sideways and vertical scrolling, and stepping through frames). Outside a Kanvas Tree nothing changes.
 
@@ -77,6 +83,22 @@ Choose how cards, frames, selection outlines, and canvas controls are drawn.
 | **Classic** | Flat, simple surfaces. The default |
 | **Studio** | Rounded corners with soft shadows and accent lines |
 | **Glass** | Translucent surfaces with subtle highlights. Glass does not blur what is behind it |
+
+### Editing Focus
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Focus While Editing** | On | Dims the rest of the canvas while you edit an image's Mask or Color, or a shape's vertices, so the edited item stands out. The mode's badge, shortcut panel and brush stay bright |
+| **Dim** | 0.55 | How dark the rest of the canvas becomes |
+| **Desaturate Other Images** | Off | While editing, shows the other images with less color, so the edited one stands out by its color too. Only the display changes: each image keeps its own **Saturation**, and nothing is changed in the file |
+| **Amount** | 1.0 | How much color the other images lose (1 is grey) |
+
+### Canvas Axes
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Axis Lines** | On | Draws the X and Y lines through the canvas origin, from one edge of the view to the other at any zoom. Turn it off for a clean background |
+| **X Axis Color**, **Y Axis Color** | Red, green | Color and opacity of each line |
 
 ### Canvas text
 

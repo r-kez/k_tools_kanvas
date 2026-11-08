@@ -35,6 +35,8 @@ UI_ACTIONS = (
     ('Mask Mode', 'MASK'),
     ('Color Mode', 'COLOR'),
     ('Vertex Type (Edit Vertices)', 'VERTEX_TYPE'),
+    ('Select Contour (Edit Vertices)', 'SELECT_CONTOUR'),
+    ('Edit Vertices (enter / leave)', 'VERTEX_EDIT'),
 )
 
 
@@ -128,6 +130,22 @@ def rebuild():
         _items.append((km, connect))
     except (TypeError, ValueError) as exc:
         print(f"Kanvas: invalid connect shortcut: {exc}")
+    for key, direction, modifiers in (('PAGE_UP', 'UP', {}), ('PAGE_DOWN', 'DOWN', {}),
+                                      ('PAGE_UP', 'TOP', {'shift': True}),
+                                      ('PAGE_DOWN', 'BOTTOM', {'shift': True})):
+        try:
+            move = km.keymap_items.new('kanvas.move_in_stack', key, 'PRESS', **modifiers)
+            move.properties.direction = direction
+            _items.append((km, move))
+        except (TypeError, ValueError) as exc:
+            print(f"Kanvas: invalid stack shortcut {key!r}: {exc}")
+    for mode, modifiers in (('PEN', {'shift': True}), ('POLYGON', {'ctrl': True})):
+        try:
+            draw = km.keymap_items.new('kanvas.draw_polygon', 'P', 'PRESS', **modifiers)
+            draw.properties.mode = mode
+            _items.append((km, draw))
+        except (TypeError, ValueError) as exc:
+            print(f"Kanvas: invalid {mode.lower()} shortcut: {exc}")
     for key, direction in (('RIGHT_BRACKET', 1),('LEFT_BRACKET', -1),
                            ('BACK_SLASH', 0)):
         try:
@@ -139,6 +157,8 @@ def rebuild():
     bind('MASK', 'M')
     bind('COLOR', 'C')
     bind('VERTEX_TYPE', 'V')
+    bind('SELECT_CONTOUR', 'L')
+    bind('VERTEX_EDIT', 'E')
     bind('F_PRESS', 'F')
     bind('F_RELEASE', 'F', value='RELEASE')
     try:
@@ -192,6 +212,13 @@ def iter_ui_bindings(window_manager):
             yield 'Quick Arrow (hold)', keyconfig, km, item
         elif item.idname == 'kanvas.paste_image':
             yield 'Paste Image', keyconfig, km, item
+        elif item.idname == 'kanvas.move_in_stack':
+            yield {'UP': 'Move Up (to the front)', 'DOWN': 'Move Down (to the back)',
+                   'TOP': 'Move to Front', 'BOTTOM': 'Move to Back'}[item.properties.direction], \
+                keyconfig, km, item
+        elif item.idname == 'kanvas.draw_polygon':
+            label = 'Pen (free path)' if item.properties.mode == 'PEN' else 'Polygon'
+            yield label, keyconfig, km, item
 
 
 def register():

@@ -51,7 +51,7 @@ try:
         # Every shortcut row is a (key, description) pair with text in both.
         assert all(len(row) == 2 and all(row) for row in gpu_shape.VERTEX_EDIT_ROWS)
         keys = [key for key, _ in gpu_shape.VERTEX_EDIT_ROWS]
-        assert 'Esc' in keys and 'Ctrl+Click vertex' in keys
+        assert 'E / Esc' in keys and 'Ctrl+Click vertex' in keys
 
         # The overlay uses the shared badge and panel; stand-ins record the calls.
         calls = []

@@ -4,6 +4,7 @@ def draw_snap_settings(layout, context, settings):
     row = column.row(align=True)
     row.prop(settings, "snap_grid", text="Grid", toggle=True)
     row.prop(settings, "snap_images", text="Edges", toggle=True)
+    row.prop(settings, "snap_shape_vertices", text="Vertices", toggle=True)
     row = column.row(align=True)
     row.prop(settings, "grid_size", text="Step")
     row.prop(settings, "snap_threshold", text="Threshold")

@@ -6,7 +6,6 @@ def draw_shape_properties(layout, settings, item):
     box.prop(item, "shape_kind", text="Kind")
 
     editing = box.row(align=True)
-    editing.enabled = item.shape_kind != 'ELLIPSE'
     editing.prop(item, "shape_edit_vertices", text="Edit Vertices", toggle=True,
                  icon='EDITMODE_HLT')
     if item.shape_edit_vertices:
@@ -17,6 +16,15 @@ def draw_shape_properties(layout, settings, item):
         delete = row.row(align=True)
         delete.enabled = selected > 0
         delete.operator("kanvas.delete_shape_vertices", text="Delete", icon='X')
+        tools = box.column(align=True)
+        tools.enabled = selected > 0
+        tools.prop(item, "shape_vertex_location", text="Position")
+        row = tools.row(align=True)
+        row.operator("kanvas.select_contour", text="Contour (L)", icon='SELECT_EXTEND')
+        row.operator("kanvas.reverse_contour", text="Reverse", icon='ARROW_LEFTRIGHT')
+        row = tools.row(align=True)
+        row.operator("kanvas.flip_shape", text="Flip H", icon='MOD_MIRROR').axis = 'X'
+        row.operator("kanvas.flip_shape", text="Flip V", icon='MOD_MIRROR').axis = 'Y'
         from ...utils.shape_geometry import HANDLE_TYPES
         types = {item.shape_vertices[i].handle_type
                  for i in range(len(item.shape_vertices)) if item.shape_vertices[i].select}
@@ -29,9 +37,24 @@ def draw_shape_properties(layout, settings, item):
                          depress=types == {identifier}).kind = identifier
     else:
         box.label(text=f"{len(item.shape_vertices)} vertices")
-    from ...utils.shape_geometry import has_curves
-    if has_curves(item):
-        box.prop(item, "shape_curve_resolution", text="Curve Resolution")
+        row = box.row(align=True)
+        row.operator("kanvas.flip_shape", text="Flip H", icon='MOD_MIRROR').axis = 'X'
+        row.operator("kanvas.flip_shape", text="Flip V", icon='MOD_MIRROR').axis = 'Y'
+    row = box.row(align=True)
+    row.prop(item, "shape_closed", text="Closed", toggle=True,
+             icon='MESH_CIRCLE' if item.shape_closed else 'IPO_LINEAR')
+    from ...utils.shape_geometry import item_contour_ranges
+    contours = len(item_contour_ranges(item))
+    if contours > 1:
+        row = box.row(align=True)
+        row.label(text=f"{contours} contours (inner ones are holes)", icon='SELECT_DIFFERENCE')
+        row.operator("kanvas.separate_contours", text="Separate", icon='MOD_EXPLODE')
+    box.prop(item, "shape_corner_radius", text="Corner Radius")
+    from ...utils.shape_geometry import uses_curve_resolution
+    row = box.row()
+    # Curved edges and rounded corners use it; a shape with neither has nothing to smooth.
+    row.enabled = uses_curve_resolution(item)
+    row.prop(item, "shape_curve_resolution", text="Curve Resolution")
     box.operator("kanvas.export_shapes_svg", text="Export SVG...", icon='EXPORT')
 
     geometry = box.column(align=True)
@@ -69,6 +92,15 @@ def draw_shape_properties(layout, settings, item):
     sub = outline.row(align=True)
     sub.enabled = item.shape_show_outline
     sub.prop(item, "shape_line_style", expand=True)
+    sub = outline.row(align=True)
+    sub.enabled = item.shape_show_outline
+    sub.prop(item, "shape_line_join", text="")
+    ends = sub.row(align=True)
+    ends.enabled = not item.shape_closed or item.shape_line_style == 'DASHED'
+    ends.prop(item, "shape_line_cap", text="")
+    align = sub.row(align=True)
+    align.enabled = item.shape_closed
+    align.prop(item, "shape_line_align", text="")
 
     box.prop(item, "opacity", text="Opacity", slider=True)
 

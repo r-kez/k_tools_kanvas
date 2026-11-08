@@ -81,10 +81,25 @@ def draw_canvas_backdrop(view_bounds, view_pixel_size):
     finally:
         gpu.state.blend_set('NONE')
 
-def draw_axes(size=10000.0):
-    """Draw X and Y axis lines for orientation."""
+def axis_segments(view_bounds):
+    """(x axis, y axis) segments across the visible area, each None when out of view.
+
+    The lines run from one edge of the view to the other, so they never end at any
+    zoom or pan.
+    """
+    x0, y0, x1, y1 = view_bounds
+    horizontal = ((x0, 0.0), (x1, 0.0)) if y0 <= 0.0 <= y1 else None
+    vertical = ((0.0, y0), (0.0, y1)) if x0 <= 0.0 <= x1 else None
+    return horizontal, vertical
+
+
+def draw_axes(view_bounds):
+    """Draw the X and Y axis lines through the canvas origin, across the whole view."""
     prefs = get_prefs()
-    if prefs is None:
+    if prefs is None or not getattr(prefs, 'canvas_axes_enabled', True):
+        return
+    horizontal, vertical = axis_segments(view_bounds)
+    if horizontal is None and vertical is None:
         return
 
     shader = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
@@ -95,12 +110,11 @@ def draw_axes(size=10000.0):
         shader.uniform_float("viewportSize", (viewport[2], viewport[3]))
         shader.uniform_float("lineWidth", 1.0)
 
-        batch_x = batch_for_shader(shader, 'LINES', {"pos": [(-size, 0), (size, 0)]})
-        shader.uniform_float("color", prefs.color_x_axis)
-        batch_x.draw(shader)
-
-        batch_y = batch_for_shader(shader, 'LINES', {"pos": [(0, -size), (0, size)]})
-        shader.uniform_float("color", prefs.color_y_axis)
-        batch_y.draw(shader)
+        for segment, color in ((horizontal, prefs.color_x_axis),
+                               (vertical, prefs.color_y_axis)):
+            if segment is None:
+                continue
+            shader.uniform_float("color", color)
+            batch_for_shader(shader, 'LINES', {"pos": list(segment)}).draw(shader)
     finally:
         gpu.state.blend_set('NONE')

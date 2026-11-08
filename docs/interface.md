@@ -61,13 +61,14 @@ Press `N` over the canvas and open the **K-Tools** tab.
 
 ### The Items panel
 
-The item list shows every item on the board. In the list you can:
+The item list shows every item on the board, in stacking order: the top of the list is the front of the canvas (see [Layers](transforms.md#layers)). In the list you can:
 
 - **Search** by name, and also by the text inside cards and checklists and by the names of color regions (a task text for linked regions). Matching items stay visible together with the frames that hold them. The **X** button clears the search.
 - **Select** any item, including images that are covered by others on the canvas.
 - **Hide or show** an item with the eye icon. Hidden items stay on the board but are not drawn or editable.
 - **Lock** an item with the lock icon. A locked image, card, or frame cannot be selected, moved, transformed, duplicated, or deleted. Click the lock again to unlock it. Locking a frame also locks everything inside it.
 - **Delete** the selected item.
+- **Reorder** the selected items with the arrow buttons beside the list: one step up or down, or to the top or bottom of their level.
 
 When an item's image file is missing on disk, the list shows how many are missing and a **Relink** button (see [Images](images.md#missing-files-and-relinking)).
 

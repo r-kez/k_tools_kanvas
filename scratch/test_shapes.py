@@ -75,7 +75,14 @@ try:
     shape.shape_kind = 'TRIANGLE'
     assert len(shape.shape_vertices) == 3
     shape.shape_kind = 'ELLIPSE'
-    assert len(shape.shape_vertices) == sg.ELLIPSE_SEGMENTS
+    # The ellipse is a curve: four Mirrored vertices, smoothed by the Curve Resolution.
+    assert len(shape.shape_vertices) == 4
+    assert all(v.handle_type == 'MIRRORED' for v in shape.shape_vertices)
+    radius = [math.dist(p, tuple(shape.location)) for p in sg.outline(shape)]
+    assert len(radius) == 4 * shape.shape_curve_resolution
+    anchors = sg.anchor_points(shape)
+    assert len(anchors) == 8, 'four vertices and the middle of the four curves'
+    assert sg.uses_curve_resolution(shape)
     shape.shape_kind = 'STAR'
     assert len(shape.shape_vertices) == 10
     assert item_bounds(shape) == (0.0, 0.0, 200.0, 100.0)

@@ -7,8 +7,9 @@ Requires **Blender 4.2 or newer**. The core add-on needs no extra software.
 ## What you can do
 
 - **Collect references.** Drag in images, paste them, or import a PureRef board. Keep optimized copies next to your project, or pack everything into the `.blend`.
-- **Organize.** Move, rotate, scale, stretch, and shear images. Align, distribute, and pack them. Group items in nested frames that resize to fit.
+- **Organize.** Move, rotate, scale, stretch, and shear images. Align, distribute, and pack them. Group items in nested frames that resize to fit, and stack them in the item list, which is the drawing order.
 - **Take notes.** Add text cards with Markdown, and checklists with progress. Connect items with arrows.
+- **Draw diagrams and vectors.** Add shapes, or draw free paths with the pen, with curves, holes, rounded corners and line styles. Join, cut and intersect shapes, and drag SVG files in or export shapes as SVG.
 - **Mark up images.** Hide parts of an image with masks. Paint named color regions to plan work, link them to checklist tasks, mark tasks as done, and isolate one color at a time.
 - **Select a subject with one click.** The optional Auto Select tool uses a small segmentation model that runs locally. It is downloaded only when you choose to.
 - **Stay in control.** Switch between **Edit** and **Move** modes so you can browse a board without changing it. Lock frames, hide items, and edit every shortcut.

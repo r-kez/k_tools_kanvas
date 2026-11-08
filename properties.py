@@ -210,6 +210,21 @@ class KanvasTextLine(bpy.types.PropertyGroup):  # type: ignore
     )
 
 
+def update_selection_order(self, context):
+    """Number items in the order they are selected (see `selection_order`)."""
+    if not self.is_selected:
+        if self.selection_order:
+            self.selection_order = 0
+        return
+    if self.selection_order:
+        return
+    settings = getattr(self.id_data, 'kanvas_settings', None)
+    if settings is None:
+        return
+    settings.selection_counter += 1
+    self.selection_order = settings.selection_counter
+
+
 def set_shape_vertices(item, vertices):
     """Replace a shape's vertices with unit-box positions (-0.5..0.5)."""
     collection = item.shape_vertices
@@ -220,31 +235,34 @@ def set_shape_vertices(item, vertices):
 
 def vertex_records(item):
     """Everything about a shape's vertices except the selection, to copy or restore."""
-    return [(tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right))
-            for v in item.shape_vertices]
+    return [(tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right),
+             v.contour) for v in item.shape_vertices]
 
 
 def set_vertex_records(item, records):
-    """Replace a shape's vertices with records from `vertex_records`."""
+    """Replace a shape's vertices with records from `vertex_records`.
+
+    Four-item records (without the contour number) all go to contour 0.
+    """
     collection = item.shape_vertices
     collection.clear()
-    for co, handle_type, left, right in records:
+    for record in records:
         vertex = collection.add()
-        vertex.co = co
-        vertex.handle_type = handle_type
-        vertex.handle_left = left
-        vertex.handle_right = right
+        vertex.co = record[0]
+        vertex.handle_type = record[1]
+        vertex.handle_left = record[2]
+        vertex.handle_right = record[3]
+        vertex.contour = record[4] if len(record) > 4 else 0
 
 
 def update_shape_kind(self, context):
     """Changing the kind rebuilds the vertices; Polygon keeps the current ones."""
     if getattr(self, 'item_type', '') != 'SHAPE':
         return
-    from .utils.shape_geometry import preset_vertices
-    vertices = preset_vertices(self.shape_kind)
-    if vertices is not None:
-        set_shape_vertices(self, vertices)
-        self.shape_edit_vertices = self.shape_edit_vertices and self.shape_kind != 'ELLIPSE'
+    from .utils.shape_geometry import preset_records
+    records = preset_records(self.shape_kind)
+    if records is not None:
+        set_vertex_records(self, records)
     update_frame_geometry(self, context)
 
 
@@ -264,6 +282,46 @@ def update_shape_edit_vertices(self, context):
 
 def update_shape_curve_resolution(self, context):
     update_shape_appearance(self, context)
+
+
+def _selected_vertices_get(self):
+    if getattr(self, 'item_type', '') != 'SHAPE':
+        return (0.0, 0.0)
+    from .operators.ops_shape import selected_vertex_indices, selection_center
+    indices = selected_vertex_indices(self)
+    return selection_center(self, indices) if indices else tuple(self.location)
+
+
+def _selected_vertices_set(self, value):
+    if getattr(self, 'item_type', '') != 'SHAPE':
+        return
+    from .operators.ops_shape import (move_vertices, normalize_shape, selected_vertex_indices,
+                                      selection_center)
+    indices = selected_vertex_indices(self)
+    if not indices:
+        return
+    current = selection_center(self, indices)
+    delta = (value[0] - current[0], value[1] - current[1])
+    if abs(delta[0]) < 1e-9 and abs(delta[1]) < 1e-9:
+        return
+    if self.shape_kind != 'POLYGON':
+        self.shape_kind = 'POLYGON'  # keeps the current vertices
+    move_vertices(self, indices, delta)
+    normalize_shape(self)
+
+
+def update_shape_closed(self, context):
+    """An open path starts without fill (the fill would close it); closing it again
+    brings the fill back, since a closed outline with neither would only be a line."""
+    if getattr(self, 'item_type', '') != 'SHAPE':
+        return
+    if not self.shape_closed:
+        if self.shape_kind != 'POLYGON':
+            self.shape_kind = 'POLYGON'  # keeps the current vertices
+        if self.shape_show_fill:
+            self.shape_show_outline = True
+            self.shape_show_fill = False
+    update_frame_geometry(self, context)
 
 
 def update_shape_fill(self, context):
@@ -314,6 +372,12 @@ class KanvasShapeVertex(bpy.types.PropertyGroup):
     handle_right: bpy.props.FloatVectorProperty(  # type: ignore
         name='Handle Out', description='Handle towards the next vertex, in the shape box',
         size=2,
+    )
+    # Which closed contour of the shape this vertex belongs to. The vertices of one
+    # contour are consecutive; a contour inside another one is a hole (even-odd fill).
+    contour: bpy.props.IntProperty(  # type: ignore
+        name='Contour', description='Closed contour of the shape this vertex belongs to',
+        default=0, min=0,
     )
 
 
@@ -689,6 +753,19 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         default=16, min=2, max=64,
         update=update_shape_curve_resolution,
     )
+    shape_vertex_location: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Vertex Position',
+        description=('Canvas position of the selected vertices (the middle of their bounds). '
+                     'Type a value to move them there'),
+        size=2, get=_selected_vertices_get, set=_selected_vertices_set,
+        options={'SKIP_SAVE'},
+    )
+    shape_closed: bpy.props.BoolProperty(  # type: ignore
+        name='Closed',
+        description=('Join the last vertex of each outline back to the first. Off, the shape '
+                     'is an open path: a line or a curve with two ends, drawn without fill'),
+        default=True, update=update_shape_closed,
+    )
     shape_show_fill: bpy.props.BoolProperty(  # type: ignore
         name='Fill', description='Fill the inside of the shape. Without a fill, only the outline picks the shape (the outline stays on)',
         default=True, update=update_shape_fill,
@@ -725,6 +802,38 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
             ('DOTTED', 'Dotted', 'Line made of dots'),
         ),
         default='SOLID', update=update_shape_appearance,
+    )
+    shape_corner_radius: bpy.props.FloatProperty(  # type: ignore
+        name='Corner Radius',
+        description=('Round every sharp corner between two straight edges with this radius, in '
+                     'canvas units. 0 keeps sharp corners. A corner never uses more than half '
+                     'of each edge'),
+        default=0.0, min=0.0, soft_max=200.0, update=update_shape_appearance,
+    )
+    shape_line_join: bpy.props.EnumProperty(  # type: ignore
+        name='Join', description='How the line turns at the corners of the outline',
+        items=[(identifier, label, description, number) for number, (identifier, label, description)
+               in enumerate((('ROUND', 'Round', 'Rounded corners'),
+                             ('MITER', 'Miter', 'Sharp corners; very sharp ones are cut off'),
+                             ('BEVEL', 'Bevel', 'Corners cut off straight')))],
+        default='ROUND', update=update_shape_appearance,
+    )
+    shape_line_cap: bpy.props.EnumProperty(  # type: ignore
+        name='Ends', description='How the ends of an open path and of each dash look',
+        items=[(identifier, label, description, number) for number, (identifier, label, description)
+               in enumerate((('ROUND', 'Round', 'Rounded ends'),
+                             ('FLAT', 'Flat', 'Cut off square at the end point'),
+                             ('SQUARE', 'Square', 'Cut off square, half the line width past '
+                              'the end point')))],
+        default='ROUND', update=update_shape_appearance,
+    )
+    shape_line_align: bpy.props.EnumProperty(  # type: ignore
+        name='Align', description='Where the line lies on a closed outline',
+        items=[(identifier, label, description, number) for number, (identifier, label, description)
+               in enumerate((('CENTER', 'Center', 'Centered on the outline'),
+                             ('INSIDE', 'Inside', 'Inside the outline: the shape keeps its size'),
+                             ('OUTSIDE', 'Outside', 'Outside the outline')))],
+        default='CENTER', update=update_shape_appearance,
     )
     shape_show_text: bpy.props.BoolProperty(  # type: ignore
         name='Text', description='Show the text of this shape, centered inside it',
@@ -922,8 +1031,11 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
     is_selected: bpy.props.BoolProperty(  # type: ignore
         name='Is Selected',
         description='Include this item in the current canvas selection',
-        default=False,
+        default=False, update=update_selection_order,
     )
+    # When the item was selected, counted per board: tools that care about the order of
+    # selection (a boolean Difference) read it. 0 while the item is not selected.
+    selection_order: bpy.props.IntProperty(default=0)  # type: ignore
     is_locked: bpy.props.BoolProperty(  # type: ignore
         name='Locked',
         description='Prevent selection and direct canvas transformations; unlock from the item list',
@@ -1387,6 +1499,14 @@ class KanvasSettings(bpy.types.PropertyGroup):
         name='Grid Snap',
         description='Snap item movements and transforms to the Kanvas grid',
         default=True,
+    )
+    selection_counter: bpy.props.IntProperty(default=0)  # type: ignore
+    # 1: the item list is the stacking order (frames carry the layer of their content).
+    stack_version: bpy.props.IntProperty(default=0)  # type: ignore
+    snap_shape_vertices: bpy.props.BoolProperty(  # type: ignore
+        name='Vertex Snap',
+        description='In Edit Vertices, snap a dragged vertex to the vertices of other shapes',
+        default=False,
     )
     snap_images: bpy.props.BoolProperty(  # type: ignore
         name='Image Snap',

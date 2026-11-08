@@ -146,6 +146,7 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
 
             if any(item.item_type == 'SHAPE' for item in content):
                 layout.separator()
+                layout.menu("KANVAS_MT_shape_tools", icon='MOD_BOOLEAN')
                 layout.operator("kanvas.export_shapes_svg", icon='EXPORT', text="Export Shapes as SVG...")
 
             if len(content) > 1:

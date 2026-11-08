@@ -23,7 +23,7 @@ This documentation is written for people who use Kanvas. It explains what each t
 | [Text cards and checklists](text-cards.md) | Notes, Markdown, and task lists |
 | [Comparing two images](comparison.md) | A/B comparison card with a divider |
 | [Arrows](arrows.md) | Connecting items with arrows |
-| [Shapes](shapes.md) | Drawing rectangles, triangles, diamonds, and polygons, editing their vertices, and adding text |
+| [Shapes](shapes.md) | Drawing shapes, free paths with the pen and polygons; editing vertices and curves; holes, line styles and rounded corners; Shape Tools (union, difference, offset...); SVG import, drag and export |
 
 ## Marking up images
 

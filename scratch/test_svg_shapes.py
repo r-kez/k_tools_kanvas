@@ -66,16 +66,16 @@ try:
     box = outlines[0]
     assert box['fill'] == (1.0, 0x88 / 255, 0.0) and box['stroke'] == (0.0, 0.0, 0.0)
     assert box['stroke_width'] == 4.0, 'stroke width scales with the transform'
-    corners = sorted({p for segment in box['segments'] for p in (segment[0], segment[3])})
+    corners = sorted({p for segment in box['contours'][0] for p in (segment[0], segment[3])})
     assert corners == sorted([(10.0, -20.0), (30.0, -20.0), (30.0, -30.0), (10.0, -30.0)]), corners
     dot = outlines[1]
     assert dot['fill'] == (0.0, 0.0, 1.0) and dot['dashed']
-    records = svg.outline_records(dot['segments'])
+    records = svg.outline_records(dot['contours'][0])
     assert len(records) == 4 and all(kind == 'MIRRORED' for _, kind, _, _ in records)
-    assert all(kind == 'SHARP' for _, kind, _, _ in svg.outline_records(box['segments']))
+    assert all(kind == 'SHARP' for _, kind, _, _ in svg.outline_records(box['contours'][0]))
     # An open polyline is closed; a two-point path has no area and is dropped.
-    assert len(svg.outline_records(outlines[2]['segments'])) == 3
-    assert svg.outline_records(outlines[-1]['segments']) == []
+    assert len(svg.outline_records(outlines[2]['contours'][0])) == 3
+    assert svg.outline_records(outlines[-1]['contours'][0]) == []
 
     # --- into the board ---------------------------------------------------------------
     area = next(a for a in bpy.context.screen.areas if a.type == 'VIEW_3D')
@@ -88,9 +88,13 @@ try:
 
     with bpy.context.temp_override(area=area, region=region, space_data=area.spaces.active):
         shapes, skipped = import_svg_shapes(bpy.context, settings, document, (500.0, 500.0), 300.0)
-        assert len(shapes) == 3 and skipped == 1, (len(shapes), skipped)  # <line> has no outline at all
+        # Lines without fill (<line> and an open path) come in as open paths.
+        assert len(shapes) == 5 and skipped == 0, (len(shapes), skipped)
         assert all(item.is_selected for item in shapes)
-        box_shape, dot_shape, open_shape = shapes
+        box_shape, dot_shape, open_shape, line_shape, path_shape = shapes
+        assert not open_shape.shape_closed and len(open_shape.shape_vertices) == 3
+        assert not line_shape.shape_closed and len(line_shape.shape_vertices) == 2
+        assert not path_shape.shape_closed and box_shape.shape_closed
         assert box_shape.name == 'box' and dot_shape.name == 'dot'
         assert tuple(round(c, 4) for c in box_shape.shape_fill_color) == (1.0, round(0x88 / 255, 4), 0.0)
         assert dot_shape.shape_line_style == 'DASHED'
@@ -133,7 +137,7 @@ try:
 
         records = sg.item_records(hexagon)
         handles = sg.effective_handles(records)
-        points = [sg.unit_to_canvas(hexagon, p) for (co, _, _, _), (l, r) in zip(records, handles)
+        points = [sg.unit_to_canvas(hexagon, p) for (co, *_), (l, r) in zip(records, handles)
                   for p in (co, l, r)]
         middle = ((max(p[0] for p in points) + min(p[0] for p in points)) / 2,
                   (max(p[1] for p in points) + min(p[1] for p in points)) / 2)
@@ -149,6 +153,8 @@ try:
         count = len(settings.images)
         assert bpy.ops.kanvas.import_shapes_svg(filepath=path, fit_size=False) == {'FINISHED'}
         assert len(settings.images) == count + 1
+        assert settings.images[0].name == 'hexagon' or any(
+            item.name == 'hexagon' for item in settings.images), 'one shape takes the file name'
         broken = os.path.join(folder, 'broken.svg')
         open(broken, 'w', encoding='utf-8').write('<svg><path d="M0 0 L')
         # Run execute on a stand-in that records the report, so no error is printed.
@@ -156,7 +162,9 @@ try:
         from k_tools_kanvas.operators.ops_shape import KANVAS_OT_ImportShapesSVG
         reports = []
         stand_in = SimpleNamespace(filepath=broken, fit_size=True, size=400.0, group=True,
+                                   files=[], directory='',
                                    report=lambda kind, message: reports.append((kind, message)))
+        stand_in._paths = lambda: KANVAS_OT_ImportShapesSVG._paths(stand_in)
         assert KANVAS_OT_ImportShapesSVG.execute(stand_in, bpy.context) == {'CANCELLED'}
         assert reports and reports[0][0] == {'ERROR'} and 'Could not read' in reports[0][1]
         assert len(settings.images) == count + 1, 'nothing added'
@@ -171,8 +179,10 @@ try:
         assert bpy.ops.kanvas.import_shapes_svg(filepath=multi) == {'FINISHED'}
         groups = [item for item in settings.images if item.item_type == 'FRAME' and item.frame_is_group]
         assert len(groups) == 1, 'groups are kept at the start of the list'
+        assert groups[0].name == 'multi', 'the group is named after the file'
         members = [item for item in settings.images if item.parent_frame == groups[0].frame_node_name]
-        assert len(members) == 3 and len(settings.images) == count + 4
+        assert len(members) == 5 and len(settings.images) == count + 6
+        assert sorted(item.name for item in members) == [f'multi.{n:03d}' for n in range(1, 6)],             sorted(item.name for item in members)
 
         # Export needs a selected shape.
         for item in settings.images:

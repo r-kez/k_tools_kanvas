@@ -71,7 +71,9 @@ try:
                                   if item.name == 'Kanvas_reference.png')
             settings.active_image_index = original_index
             assert bpy.ops.kanvas.duplicate_image() == {'FINISHED'}
-            settings.active_image_index = original_index
+            # The copy goes to the top of the list (the front), so look the original up again.
+            settings.active_image_index = next(i for i, item in enumerate(settings.images)
+                                               if item.name == 'Kanvas_reference.png')
             assert bpy.ops.kanvas.duplicate_image() == {'FINISHED'}
             copy_names = sorted(item.name for item in settings.images if '_copy' in item.name)
             assert copy_names == [

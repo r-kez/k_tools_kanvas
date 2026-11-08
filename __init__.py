@@ -80,6 +80,7 @@ def ensure_kanvas_protection(dummy):
                 item.mask_editing = False
                 item.markup_editing = False
             _migrate_text_card_titles(settings)
+            _migrate_stack_order(settings)
             _restore_image_frame_auto_fit(settings)
 
 
@@ -120,6 +121,23 @@ def _restore_image_frame_auto_fit(settings):
             update_frame_bounds(None, settings, frame.frame_node_name)
 
 
+def _migrate_stack_order(settings):
+    """Boards saved before the list became the stacking order: frames and groups had
+    no layer of their own (0), so they would all sink to the back with their content.
+    Give each one the layer of its front member, innermost first."""
+    if settings.stack_version >= 1:
+        return
+    from .utils.gpu import frame_ancestors
+    frames = [item for item in settings.images if item.item_type == 'FRAME']
+    frames.sort(key=lambda frame: len(frame_ancestors(settings, frame)), reverse=True)
+    for frame in frames:
+        layers = [item.z_index for item in settings.images
+                  if item.parent_frame == frame.frame_node_name]
+        if layers and max(layers) > frame.z_index:
+            frame.z_index = max(layers)
+    settings.stack_version = 1
+
+
 def _migrate_text_card_titles(settings):
     """Preserve the visible title (or its absence) from older saved cards."""
     for item in settings.images:
@@ -148,6 +166,7 @@ def _restore_loaded_frames():
             tree.use_fake_user = True
             clear_stale_paint_state(tree)
             _migrate_text_card_titles(tree.kanvas_settings)
+            _migrate_stack_order(tree.kanvas_settings)
             _restore_image_frame_auto_fit(tree.kanvas_settings)
     return None
 

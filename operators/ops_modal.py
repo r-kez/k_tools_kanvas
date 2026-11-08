@@ -112,7 +112,8 @@ def _select_canvas_items(settings, invert=False):
     return before != after
 
 
-SHAPE_GESTURES = {'SHAPE_DRAW', 'SHAPE_VERTEX', 'SHAPE_BEND', 'SHAPE_HANDLE'}
+SHAPE_GESTURES = {'SHAPE_DRAW', 'SHAPE_VERTEX', 'SHAPE_BEND', 'SHAPE_HANDLE',
+                  'SHAPE_VERTEX_XFORM'}
 
 
 def _undo_content_signature(settings):
@@ -123,10 +124,39 @@ def _undo_content_signature(settings):
                   item.frame_width, item.frame_height, item.auto_resize,
                   item.text_width, item.text_height, item.text_scale,
                   item.shape_width, item.shape_height,
-                  tuple((tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right))
-                        for v in item.shape_vertices)
+                  item.shape_closed if item.item_type == 'SHAPE' else True,
+                  tuple((tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right),
+                         v.contour) for v in item.shape_vertices)
                   if item.item_type == 'SHAPE' else ())
                  for item in settings.images)
+
+
+def toggle_vertex_edit(settings):
+    """Enter Edit Vertices on the one selected shape, or leave it. Returns the shape,
+    or None when there is no single selected, unlocked, visible shape."""
+    from ..utils.gpu.gpu_shape import vertex_edit_shape
+    editing = vertex_edit_shape(settings)
+    if editing is not None:
+        editing.shape_edit_vertices = False
+        return editing
+    selected = [item for item in settings.images if item.is_selected]
+    if len(selected) != 1:
+        return None
+    shape = selected[0]
+    if shape.item_type != 'SHAPE' or shape.is_locked or not shape.show_in_editor:
+        return None
+    index = next(i for i, item in enumerate(settings.images) if item.item_id == shape.item_id)
+    if settings.active_image_index != index:
+        settings.active_image_index = index
+    shape.shape_edit_vertices = True
+    return shape
+
+
+def _clear_status(context):
+    try:
+        context.workspace.status_text_set(None)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
 
 
 def _event_in_canvas(context, event):
@@ -156,6 +186,49 @@ class KanvasInteractionHelpers:
     # -----------------------------------------------------------------------
     # Drag helpers
     # -----------------------------------------------------------------------
+
+    def _transform_items(self, settings, mode):
+        """Items a transform acts on: the selected images and shapes (and cards when
+        moving), plus, to rotate or scale, everything inside a selected group.
+
+        Groups have no transform of their own: rotating or scaling one changes each
+        member around the middle of the group. Cards inside a group come along: they
+        move and scale with it but stay upright, since cards never rotate.
+        """
+        from ..utils.gpu import frame_descendants, is_group
+        group_transform = mode in {'ROTATE', 'SCALE_U'}
+        result, seen = [], set()
+
+        def add(item, in_group=False):
+            if item.item_id in seen or not item.show_in_editor or item.is_locked:
+                return
+            if ((item.item_type == 'IMAGE' and item.image_data) or item.item_type == 'SHAPE'
+                    or (item.item_type == 'TEXT' and (mode == 'MOVE' or in_group))):
+                seen.add(item.item_id)
+                result.append(item)
+
+        for item in settings.images:
+            if not item.is_selected:
+                continue
+            if group_transform and is_group(item) and not item.is_locked:
+                for child in frame_descendants(settings, item.frame_node_name):
+                    add(child, True)
+            else:
+                add(item)
+        return result
+
+    def _group_pivot(self, settings, targets):
+        """Middle of the selected group's box, when the transform is one group's."""
+        from ..utils.gpu import frame_descendants, is_group
+        groups = [item for item in settings.images if item.is_selected and is_group(item)]
+        if len(groups) != 1:
+            return None
+        group = groups[0]
+        members = {child.item_id for child in frame_descendants(settings, group.frame_node_name)}
+        if not all(target.item_id in members for target in targets):
+            return None
+        return (group.location[0] + group.frame_width * 0.5,
+                group.location[1] - group.frame_height * 0.5)
 
     def start_drag(self, context, img, mode, mouse_pos):
         """Prepara o estado inicial de um drag."""
@@ -190,11 +263,7 @@ class KanvasInteractionHelpers:
 
         self.multi_targets = []
         self.init_shape_size = (img.shape_width, img.shape_height)
-        selected_images = [i for i in settings.images if i.is_selected and i.show_in_editor
-                           and not i.is_locked
-                           and ((i.item_type == 'IMAGE' and i.image_data)
-                                or i.item_type == 'SHAPE'
-                                or (mode == 'MOVE' and i.item_type == 'TEXT'))]
+        selected_images = self._transform_items(settings, mode)
 
         if len(selected_images) > 1:
             # Multi-seleção: calcula bounding box coletiva para o pivot
@@ -220,10 +289,18 @@ class KanvasInteractionHelpers:
                     'scale_xy':     (item.scale_xy[0], item.scale_xy[1]),
                     'rot':          item.rotation,
                     'orig_parent':  item.parent_frame,
+                    # Cards never rotate, and scale by their own size.
+                    'upright':      item.item_type == 'TEXT',
+                    'text_scale':   item.text_scale,
                 })
 
             bbox = get_collective_bounding_box(data_list)
-            if bbox:
+            group_pivot = self._group_pivot(settings, selected_images)
+            if group_pivot is not None:
+                self.selection_pivot = group_pivot
+                self.init_mouse_local = (mouse_pos[0] - group_pivot[0],
+                                         mouse_pos[1] - group_pivot[1])
+            elif bbox:
                 self.selection_pivot = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
                 cdx = mouse_pos[0] - self.selection_pivot[0]
                 cdy = mouse_pos[1] - self.selection_pivot[1]
@@ -241,6 +318,8 @@ class KanvasInteractionHelpers:
                     'scale_xy':     (img.scale_xy[0], img.scale_xy[1]),
                     'rot':          img.rotation,
                     'orig_parent':  img.parent_frame,
+                    'upright':      img.item_type == 'TEXT',
+                    'text_scale':   img.text_scale,
                 })
             self.selection_pivot = (img.location[0], img.location[1])
 
@@ -253,6 +332,8 @@ class KanvasInteractionHelpers:
                 'scale_xy':     (img.scale_xy[0], img.scale_xy[1]),
                 'rot':          img.rotation,
                 'orig_parent':  img.parent_frame,
+                'upright':      img.item_type == 'TEXT',
+                'text_scale':   img.text_scale,
             })
 
         from ..utils.arrow_geometry import capture_selected_arrow_move
@@ -439,11 +520,10 @@ class KanvasInteractionHelpers:
         Retorna (None, None) se nada encontrado.
         """
         settings = get_settings(context)
-        from ..utils.item_geometry import (image_draw_indices, shape_draw_indices,
-                                           text_card_draw_indices)
+        from ..utils.item_geometry import layer_draw_indices, text_card_draw_indices
+        # Front to back: cards, then images and shapes in their shared stack.
         sorted_indices = list(reversed(text_card_draw_indices(settings)))
-        sorted_indices.extend(reversed(shape_draw_indices(settings)))
-        sorted_indices.extend(reversed(image_draw_indices(settings)))
+        sorted_indices.extend(reversed(layer_draw_indices(settings)))
         view_pixel_size = 1.0
         try:
             v2d = context.region.view2d
@@ -638,7 +718,7 @@ class KanvasInteractionHelpers:
             if edge is None:
                 return self._start_vertex_box(context, event, settings, shape, mouse, pixel_size)
             edge_index, t = edge
-            ends = [edge_index, (edge_index + 1) % len(shape.shape_vertices)]
+            ends = [edge_index, sg.next_index(sg.item_records(shape), edge_index)]
             if event.shift:
                 both = all(shape.shape_vertices[i].select for i in ends)
                 for i in ends:
@@ -668,6 +748,38 @@ class KanvasInteractionHelpers:
         context.area.tag_redraw()
         return self._begin_gesture(context)
 
+    def _start_vertex_transform(self, context, settings, action, mouse):
+        """G, R or S in Edit Vertices: move, rotate or scale the selected vertices
+        around the middle of their bounds. Returns None when no vertex is selected, so
+        the keys keep working on the shape itself."""
+        from ..utils.gpu.gpu_shape import vertex_edit_shape
+        from ..properties import vertex_records
+        from .ops_shape import selected_vertex_indices, selection_center
+        shape = vertex_edit_shape(settings)
+        indices = selected_vertex_indices(shape) if shape is not None else []
+        if not indices or (action != 'MOVE' and len(indices) < 2):
+            return None
+        view = context.region.view2d
+        self.shape_target_id = shape.item_id
+        self.shape_vertex_start = (shape.shape_kind, vertex_records(shape), indices)
+        self.shape_vertex_moves = [
+            (index, tuple(shape.shape_vertices[index].co),
+             tuple(shape.shape_vertices[index].handle_left),
+             tuple(shape.shape_vertices[index].handle_right)) for index in indices]
+        self.shape_vertex_collapse = False
+        self.shape_vertex_moved = False
+        self.shape_vertex_pixel = abs(view.region_to_view(1, 0)[0] - view.region_to_view(0, 0)[0])
+        self.vertex_xform = action
+        self.vertex_pivot = selection_center(shape, indices)
+        self.init_mouse_view = (mouse[0], mouse[1])
+        self.last_mouse_pos = (mouse[0], mouse[1])
+        self.drag_mode = 'SHAPE_VERTEX_XFORM'
+        self.keyboard_transform = True
+        context.workspace.status_text_set(
+            f'{action.title()} vertices  |  click or Enter: confirm  |  Esc or right-click: cancel'
+            '  |  Ctrl: snap')
+        return self._begin_gesture(context)
+
     def _start_vertex_box(self, context, event, settings, shape, mouse, pixel_size):
         """Arm a vertex box selection, unless the press belongs to something else."""
         from ..utils.arrow_geometry import hit_arrow
@@ -684,7 +796,8 @@ class KanvasInteractionHelpers:
         self.shape_target_id = shape.item_id
         # A click inside the shape only clears the vertex selection; a click on empty
         # canvas deselects the shape, which leaves Edit Vertices as before.
-        self.vertex_box_inside = img is not None or sg.contains(shape, mouse)
+        self.vertex_box_inside = img is not None or any(
+            sg.point_in_polygon(mouse, ring) for ring in sg.outlines(shape))
         self.box_additive = event.shift
         self.vertex_box_subtract = event.ctrl and not event.shift
         self.pending_view_start = mouse
@@ -707,6 +820,13 @@ class KanvasInteractionHelpers:
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
                 self.drag_mode = 'NONE'
                 self.shape_target_id = None
+                if shape is not None and self.vertex_box_subtract:
+                    # Ctrl+click (no drag) away from the outline adds a vertex there.
+                    from .ops_shape import add_vertex_at
+                    select_shape_vertices(shape, [add_vertex_at(shape, self.pending_view_start)])
+                    from .ops_shape import normalize_shape
+                    normalize_shape(shape)
+                    return self._end(context, {'FINISHED'})
                 if shape is not None and self.vertex_box_inside:
                     if not (self.box_additive or self.vertex_box_subtract):
                         select_shape_vertices(shape, [])
@@ -761,6 +881,9 @@ class KanvasInteractionHelpers:
             self.shape_vertex_moved = True
             if item.shape_kind != 'POLYGON':
                 item.shape_kind = 'POLYGON'  # keeps the current vertices
+        if mode == 'SHAPE_VERTEX_XFORM':
+            self._update_vertex_transform(settings, item, (mouse_x, mouse_y), shift, ctrl)
+            return
         if mode == 'SHAPE_BEND':
             from .ops_shape import bend_edge, prepare_handle_edit
             edge, t, base, ends = self.shape_bend
@@ -791,6 +914,12 @@ class KanvasInteractionHelpers:
         if ctrl:
             grid = max(1.0, float(settings.grid_size)) * (0.1 if shift else 1.0)
             point = (round(point[0] / grid) * grid, round(point[1] / grid) * grid)
+        elif getattr(settings, 'snap_shape_vertices', False):
+            from .ops_shape import snap_to_shape_vertices
+            target = snap_to_shape_vertices(
+                settings, item, point, settings.snap_threshold * self.shape_vertex_pixel)
+            if target is not None:
+                point = target
         dx, dy = point[0] - grab[0], point[1] - grab[1]
 
         def moved(unit):
@@ -805,6 +934,50 @@ class KanvasInteractionHelpers:
                 vertex.handle_left = moved(left)
                 vertex.handle_right = moved(right)
 
+    def _update_vertex_transform(self, settings, item, mouse, shift, ctrl):
+        from ..utils import shape_geometry as sg
+        pivot, start = self.vertex_pivot, self.init_mouse_view
+        action = self.vertex_xform
+        if action == 'MOVE':
+            dx, dy = mouse[0] - start[0], mouse[1] - start[1]
+            if ctrl:
+                grid = max(1.0, float(settings.grid_size)) * (0.1 if shift else 1.0)
+                dx, dy = round(dx / grid) * grid, round(dy / grid) * grid
+
+            def place(point):
+                return point[0] + dx, point[1] + dy
+        elif action == 'ROTATE':
+            angle = (math.atan2(mouse[1] - pivot[1], mouse[0] - pivot[0])
+                     - math.atan2(start[1] - pivot[1], start[0] - pivot[0]))
+            if ctrl:
+                step = math.radians(1.0 if shift else 15.0)
+                angle = round(angle / step) * step
+            c, s = math.cos(angle), math.sin(angle)
+
+            def place(point):
+                x, y = point[0] - pivot[0], point[1] - pivot[1]
+                return pivot[0] + x * c - y * s, pivot[1] + x * s + y * c
+        else:
+            base = math.dist(start, pivot)
+            factor = math.dist(mouse, pivot) / base if base > 1e-9 else 1.0
+            if ctrl:
+                step = 0.01 if shift else 0.1
+                factor = round(factor / step) * step
+
+            def place(point):
+                return (pivot[0] + (point[0] - pivot[0]) * factor,
+                        pivot[1] + (point[1] - pivot[1]) * factor)
+
+        def moved(unit):
+            return sg.canvas_to_unit(item, place(sg.unit_to_canvas(item, unit)))
+
+        for index, unit, left, right in self.shape_vertex_moves:
+            if 0 <= index < len(item.shape_vertices):
+                vertex = item.shape_vertices[index]
+                vertex.co = moved(unit)
+                vertex.handle_left = moved(left)
+                vertex.handle_right = moved(right)
+
     def _finish_shape_gesture(self, context, settings):
         from ..utils import shape_geometry as sg
         from .ops_shape import attach_new_shape, normalize_shape
@@ -812,6 +985,8 @@ class KanvasInteractionHelpers:
         mode = self.drag_mode
         self.drag_mode = 'NONE'
         self.shape_target_id = None
+        if mode == 'SHAPE_VERTEX_XFORM':
+            _clear_status(context)
         if item is not None and mode == 'SHAPE_DRAW':
             view = context.region.view2d
             pixel_size = abs(view.region_to_view(1, 0)[0] - view.region_to_view(0, 0)[0])
@@ -834,6 +1009,8 @@ class KanvasInteractionHelpers:
         mode = self.drag_mode
         self.drag_mode = 'NONE'
         self.shape_target_id = None
+        if mode == 'SHAPE_VERTEX_XFORM':
+            _clear_status(context)
         if item is not None and mode == 'SHAPE_DRAW':
             index = next(i for i, other in enumerate(settings.images)
                          if other.item_id == item.item_id)
@@ -1268,7 +1445,10 @@ class KanvasInteractionHelpers:
                     raw_factor, 1.0, shift=shift, ctrl=ctrl)
                 for target in self.multi_targets:
                     item = target['img']
-                    item.scale_master = max(0.001, target['scale_master'] * scale_factor)
+                    if target.get('upright'):
+                        item.text_scale = max(0.25, target['text_scale'] * scale_factor)
+                    else:
+                        item.scale_master = max(0.001, target['scale_master'] * scale_factor)
                     if len(self.multi_targets) > 1:
                         item.location[0] = self.selection_pivot[0] + (target['loc'][0] - self.selection_pivot[0]) * scale_factor
                         item.location[1] = self.selection_pivot[1] + (target['loc'][1] - self.selection_pivot[1]) * scale_factor
@@ -1318,7 +1498,8 @@ class KanvasInteractionHelpers:
 
             for target in self.multi_targets:
                 item = target['img']
-                item.rotation = target['rot'] + rot_delta
+                if not target.get('upright'):
+                    item.rotation = target['rot'] + rot_delta
                 if len(self.multi_targets) > 1:
                     item.location[0], item.location[1] = rotate_point(
                         target['loc'], self.selection_pivot, rot_delta
@@ -1594,6 +1775,8 @@ class KanvasInteractionHelpers:
             img.scale_xy = target['scale_xy']
             img.scale_master = target['scale_master']
             img.rotation = target['rot']
+            if 'text_scale' in target and img.text_scale != target['text_scale']:
+                img.text_scale = target['text_scale']
             if 'orig_parent' in target:
                 img.parent_frame = target['orig_parent']
 
@@ -1803,6 +1986,22 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 return {'CANCELLED'}
             return {'PASS_THROUGH'}
 
+        if self.action == 'VERTEX_EDIT':
+            # E enters or leaves Edit Vertices, like M and C for Mask and Color.
+            target = toggle_vertex_edit(settings)
+            if target is None:
+                return {'PASS_THROUGH'}
+            context.area.tag_redraw()
+            return {'CANCELLED'}
+
+        if self.action == 'SELECT_CONTOUR':
+            from ..utils.gpu.gpu_shape import vertex_edit_shape
+            if vertex_edit_shape(settings) is None:
+                return {'PASS_THROUGH'}
+            bpy.ops.kanvas.select_contour('INVOKE_DEFAULT')
+            context.area.tag_redraw()
+            return {'CANCELLED'}
+
         if self.action in {'SELECT_ALL', 'SELECT_INVERT'}:
             from ..utils.gpu.gpu_shape import vertex_edit_shape
             editing = vertex_edit_shape(settings)
@@ -1855,7 +2054,13 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             elif _modifier_held(event, prefs.wheel_layer_mod):
                 target = hit
                 if target:
-                    target.z_index += delta
+                    from .ops_stack import move_in_stack
+                    if not move_in_stack(settings, [target], 'UP' if delta > 0 else 'DOWN'):
+                        return {'CANCELLED'}
+                    from ..utils.gpu import sync_kanvas_frames
+                    hit_id = target.item_id
+                    sync_kanvas_frames(settings.id_data, settings)
+                    target = next(item for item in settings.images if item.item_id == hit_id)
             else:
                 return {'PASS_THROUGH'}
             if target is None:
@@ -1900,11 +2105,11 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     return {'CANCELLED'}
                 return {'PASS_THROUGH'}
             if self.action in {'MOVE', 'ROTATE', 'SCALE'}:
-                selected = [item for item in settings.images
-                            if item.is_selected and item.show_in_editor and not item.is_locked
-                            and ((item.item_type == 'IMAGE' and item.image_data)
-                                 or item.item_type == 'SHAPE'
-                                 or (self.action == 'MOVE' and item.item_type == 'TEXT'))]
+                started = self._start_vertex_transform(context, settings, self.action, mouse)
+                if started is not None:
+                    return started
+                selected = self._transform_items(
+                    settings, {'MOVE': 'MOVE', 'ROTATE': 'ROTATE', 'SCALE': 'SCALE_U'}[self.action])
                 if self.action == 'MOVE' and img and img.item_type == 'FRAME' and img.is_selected:
                     self.keyboard_transform = True
                     self._start_frame_drag(context, img, 'MOVE', mouse)

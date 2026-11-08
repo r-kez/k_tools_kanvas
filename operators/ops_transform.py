@@ -31,11 +31,7 @@ class KANVAS_OT_TransformImage(KanvasTreeOnly, bpy.types.Operator):
                 item.is_selected = False
             self.img.is_selected = True
         
-        # Joga para frente (Z-index)
-        other_z = [img.z_index for img in self.settings.images if img != self.img]
-        max_other_z = max(other_z) if other_z else -1
-        if self.img.z_index <= max_other_z:
-            self.img.z_index = max_other_z + 1
+        # The stacking stays as the user arranged it: transforming never lifts the image.
         # Converte a posição inicial do mouse
         v2d = context.region.view2d
         self.init_mouse = v2d.region_to_view(event.mouse_region_x, event.mouse_region_y)

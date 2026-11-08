@@ -6,7 +6,7 @@ This page explains how images get onto the board, where Kanvas keeps them, and h
 
 | Method | Notes |
 | --- | --- |
-| Drag files onto the canvas | One or many files. Supported formats are PNG, JPG/JPEG, TGA, TIF/TIFF, WebP, and EXR |
+| Drag files onto the canvas | One or many files, placed where you drop them. Supported formats are PNG, JPG/JPEG, TGA, TIF/TIFF, WebP, and EXR. SVG files become [shapes](shapes.md#svg-files) |
 | **Add > Image** | Choose one file |
 | **Add > Multiple Images** | Choose several files at once |
 | `Ctrl + V` over the canvas | Pastes copied image files, copied image pixels (Windows), or a copied file path (see [Pasting](#pasting)) |

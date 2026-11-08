@@ -407,6 +407,25 @@ class _KanvasBatchImport:
             self._batch_timer = None
 
 
+def drop_location(context, event):
+    """Canvas point under the pointer when files are dropped, or None."""
+    region = getattr(context, 'region', None)
+    if (event is None or region is None or region.type != 'WINDOW'
+            or getattr(region, 'view2d', None) is None):
+        return None
+    x, y = event.mouse_region_x, event.mouse_region_y
+    if not (0 <= x <= region.width and 0 <= y <= region.height):
+        return None
+    return tuple(region.view2d.region_to_view(x, y))
+
+
+def view_center(context):
+    region = getattr(context, 'region', None)
+    if region is not None and getattr(region, 'view2d', None):
+        return tuple(region.view2d.region_to_view(region.width / 2, region.height / 2))
+    return (0.0, 0.0)
+
+
 class KANVAS_FH_ImageHandler(bpy.types.FileHandler):
     bl_idname        = "KANVAS_FH_ImageHandler"
     bl_label         = "Kanvas Image Drop Handler"
@@ -483,6 +502,11 @@ class KANVAS_OT_AddImage(KanvasTreeOnly, _KanvasBatchImport, bpy.types.Operator)
     directory: bpy.props.StringProperty(subtype="DIR_PATH")  # type: ignore
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement)  # type: ignore
 
+    def invoke(self, context, event):
+        """A drop lands where the pointer is, not in the middle of the view."""
+        self._drop_location = drop_location(context, event)
+        return self.execute(context)
+
     def execute(self, context):
         # Determina lista de caminhos a carregar
         if self.files:
@@ -500,11 +524,8 @@ class KANVAS_OT_AddImage(KanvasTreeOnly, _KanvasBatchImport, bpy.types.Operator)
         if not paths_to_load:
             return {'CANCELLED'}
 
-        # Calcula posição central para drop
-        region = getattr(context, 'region', None)
-        location = (0, 0)
-        if region and getattr(region, 'view2d', None):
-            location = region.view2d.region_to_view(region.width / 2, region.height / 2)
+        # Where the files were dropped; the middle of the view without a pointer.
+        location = getattr(self, '_drop_location', None) or view_center(context)
 
         if len(paths_to_load) == 1:
             # Caminho rápido: carrega direto, sem timer
@@ -1013,7 +1034,8 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
             for name in ('shape_width', 'shape_height', 'shape_show_fill', 'shape_fill_opacity',
                          'shape_show_outline', 'shape_line_width', 'shape_line_style',
                          'shape_show_text', 'text_font_size', 'opacity',
-                         'shape_curve_resolution'):
+                         'shape_curve_resolution', 'shape_closed', 'shape_line_join',
+                         'shape_line_cap', 'shape_line_align', 'shape_corner_radius'):
                 setattr(new_img, name, getattr(source, name))
             for name in ('shape_fill_color', 'shape_line_color', 'text_color'):
                 setattr(new_img, name, tuple(getattr(source, name)))

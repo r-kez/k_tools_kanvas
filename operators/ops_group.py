@@ -59,7 +59,9 @@ def group_selection(context, settings):
         target_id = target.item_id
     else:
         parents = {item.parent_frame for item in loose}
+        layer = max(item.z_index for item in loose)
         group = settings.images.add()
+        group.z_index = layer
         group.item_id = uuid.uuid4().hex
         group.item_type = 'FRAME'
         group.frame_is_group = True

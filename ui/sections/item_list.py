@@ -23,6 +23,11 @@ def draw_item_list(layout, settings):
     col.operator_context = 'INVOKE_DEFAULT'
     col.operator("kanvas.remove_image", icon='REMOVE', text="").index = settings.active_image_index
     col.operator("kanvas.check_board", icon='CHECKMARK', text="")
+    col.separator()
+    col.operator("kanvas.move_in_stack", icon='TRIA_UP_BAR', text="").direction = 'TOP'
+    col.operator("kanvas.move_in_stack", icon='TRIA_UP', text="").direction = 'UP'
+    col.operator("kanvas.move_in_stack", icon='TRIA_DOWN', text="").direction = 'DOWN'
+    col.operator("kanvas.move_in_stack", icon='TRIA_DOWN_BAR', text="").direction = 'BOTTOM'
 
     from ...operators.ops_image import missing_external_items
     missing_count = len(missing_external_items(settings))
