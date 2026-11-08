@@ -82,11 +82,37 @@ def union(*rects):
             max(r[2] for r in rects), max(r[3] for r in rects))
 
 
-def board_rect(settings, scope):
-    """Canvas rectangle of 'SELECTION' (selected items and arrows) or 'ALL' (every
-    visible item and arrow). None when there is nothing."""
+def selection_contents(settings):
+    """(items, arrows) a picture of the selection shows: the selected items, with
+    everything inside a selected frame or group (not the frame around a selected
+    item), and the arrows that are selected or whose attached ends all land on those
+    items. Hidden items stay hidden."""
+    from .gpu import frame_descendants
+    kept = {}
+    for item in settings.images:
+        if not item.is_selected or not item.show_in_editor:
+            continue
+        kept[item.item_id] = item
+        if item.item_type == 'FRAME':
+            for child in frame_descendants(settings, item.frame_node_name):
+                if child.show_in_editor:
+                    kept[child.item_id] = child
+    arrows = []
+    for arrow in settings.arrows:
+        ends = [item_id for item_id in (arrow.start_item_id, arrow.end_item_id) if item_id]
+        if arrow.is_selected or (ends and all(item_id in kept for item_id in ends)):
+            arrows.append(arrow)
+    return list(kept.values()), arrows
+
+
+def board_rect(settings, scope, only_selected=True):
+    """Canvas rectangle of 'SELECTION' (what `selection_contents` keeps, or with
+    `only_selected` off, the selected items and arrows) or 'ALL' (every visible item
+    and arrow). None when there is nothing."""
     visible = [item for item in settings.images if item.show_in_editor]
-    if scope == 'SELECTION':
+    if scope == 'SELECTION' and only_selected:
+        items, arrows = selection_contents(settings)
+    elif scope == 'SELECTION':
         items = [item for item in visible if item.is_selected]
         arrows = [arrow for arrow in settings.arrows if arrow.is_selected]
     else:
@@ -151,9 +177,10 @@ def _render_tile(settings, space, frame_number, left, bottom, pixel_size, width,
 
 
 def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), space=None,
-           frame_number=0):
+           frame_number=0, only=None):
     """The picture of `rect` as a NumPy array (height, width, 4) of uint8, straight
-    alpha, top row first, ready for PNG."""
+    alpha, top row first, ready for PNG. `only` is (items, arrows) to draw alone (see
+    `selection_contents`); the other items are hidden while drawing and come back."""
     import numpy as np
     from ..properties import suspend_selection_updates
     width, height = output_size(rect, scale, margin)
@@ -166,7 +193,17 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
     # No outline or handle in the picture: clear the selection for the moment.
     selected = [item.is_selected for item in settings.images]
     arrows = [arrow.is_selected for arrow in settings.arrows]
+    shown = [item.show_in_editor for item in settings.images]
+    from .gpu import gpu_arrow
+    from ..properties import suspend_visibility_updates
     try:
+        if only is not None:
+            keep = {item.item_id for item in only[0]}
+            with suspend_visibility_updates():
+                for item in settings.images:
+                    if item.show_in_editor and item.item_id not in keep:
+                        item.show_in_editor = False
+            gpu_arrow.ARROW_FILTER = {arrow.as_pointer() for arrow in only[1]}
         with suspend_selection_updates():
             for item in settings.images:
                 if item.is_selected:
@@ -180,6 +217,11 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
             tile = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 4)
             picture[y:y + h, x:x + w] = tile
     finally:
+        gpu_arrow.ARROW_FILTER = None
+        with suspend_visibility_updates():
+            for item, state in zip(settings.images, shown):
+                if item.show_in_editor != state:
+                    item.show_in_editor = state
         with suspend_selection_updates():
             for item, state in zip(settings.images, selected):
                 if item.is_selected != state:

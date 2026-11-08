@@ -7,6 +7,7 @@ from .utils.kanvas_data import get_settings
 
 _frame_geometry_updates_suspended = 0
 _selection_updates_suspended = 0
+_visibility_updates_suspended = 0
 
 _MARKDOWN_TOOLTIP = """Format text in this card with Markdown:
 # Heading, ## Subheading, ### Small heading
@@ -36,6 +37,18 @@ def suspend_frame_geometry_updates():
 
 
 @contextmanager
+def suspend_visibility_updates():
+    """Hide or show items one by one, without a frame passing it on to its children
+    (an exported picture hides what it leaves out, then puts every item back)."""
+    global _visibility_updates_suspended
+    _visibility_updates_suspended += 1
+    try:
+        yield
+    finally:
+        _visibility_updates_suspended -= 1
+
+
+@contextmanager
 def suspend_selection_updates():
     """Keep a multi-selection intact while the UI list changes order."""
     global _selection_updates_suspended
@@ -55,6 +68,8 @@ def update_kanvas_item_name(self, context):
 
 def update_show_in_editor(self, context):
     """Quando visibilidade muda. Se for frame, propaga para todas as imagens filhas."""
+    if _visibility_updates_suspended:
+        return
     if getattr(self, "item_type", 'IMAGE') == 'FRAME' and self.frame_node_name:
         try:
             settings = _settings_for_item(self, context)

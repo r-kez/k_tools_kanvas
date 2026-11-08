@@ -9,6 +9,7 @@ Right-click on the canvas and choose **Export Image...**. Pick where to save the
 | Option | What it does |
 | --- | --- |
 | **Area** | **Selection**: around the selected items and arrows (the default when something is selected). **Whole Board**: around every visible item and arrow. **View**: exactly what the editor shows now. |
+| **Only Selected** | With **Selection**: draw only the selected items and the arrows between them, on their own. A selected frame or group brings what is inside it; an item inside a frame comes out without the frame, so the background stays transparent. On by default. Turn it off to get everything inside the area, like a crop of the board. |
 | **Scale** | Pixels per canvas unit. At 1, items have the size they have on the canvas at 100% zoom; at 2 the picture is twice as sharp. For **View**, 1 is the size of the editor on screen. The resulting size in pixels is shown below. |
 | **Margin** | Empty space around the picture, in pixels |
 | **Background** | **Transparent** (the default) keeps transparency around and through the items. **Canvas** uses the color of the canvas. **Color** uses a color you choose. |
@@ -20,7 +21,7 @@ The picture is drawn exactly like the canvas: images with their adjustments, mas
 
 Everything that belongs to the interface stays out: selection outlines and handles, the resize grip of cards, the edit button, gradient handles, the editing focus, the canvas grid and axes, badges and buttons. The selection is cleared only while the picture is drawn and comes back right after.
 
-Everything inside the area is in the picture, selected or not: with **Selection**, items that overlap the selected ones show too.
+With **Selection** and **Only Selected**, only the selection is drawn (Blender annotations, which belong to no item, stay out). With **Whole Board**, **View**, or **Only Selected** off, everything inside the area is in the picture. Hidden items never show.
 
 ## Size limits
 

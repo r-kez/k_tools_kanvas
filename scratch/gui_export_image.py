@@ -81,6 +81,37 @@ def run():
         check(not ((edge[:, 2] > 150) & (edge[:, 0] < 100)).any(), 'selection outline drawn')
         check(by_id(red_id).is_selected, 'the selection is back')
 
+        # --- Inside a frame: only the selection, or the whole area ------------------------
+        frame = settings.images.add()
+        frame.item_type, frame.item_id, frame.name = 'FRAME', 'frame', 'Frame'
+        frame.frame_node_name = 'kanvas_export_frame'
+        frame.location, frame.frame_width, frame.frame_height = (-50.0, 160.0), 300.0, 220.0
+        frame.frame_color = (0.2, 0.6, 0.2)
+        frame.auto_resize = False
+        by_id(red_id).parent_frame = 'kanvas_export_frame'
+        for item in settings.images:
+            item.is_selected = item.item_id == red_id
+        only = br.selection_contents(settings)
+        rect = br.board_rect(settings, 'SELECTION')
+        alone = br.render(settings, rect, 1.0, margin=10, only=only)
+        check(alone[2, 2, 3] == 0, f'the frame stays out {tuple(alone[2, 2])}')
+        check(tuple(alone[60, 110]) == (255, 0, 0, 255), 'the shape is drawn alone')
+        check(by_id('frame').show_in_editor and by_id(red_id).show_in_editor, 'visibility is back')
+        area_picture = br.render(settings, rect, 1.0, margin=10)
+        check(area_picture[2, 2, 3] > 0, 'without Only Selected the frame shows')
+        result = bpy.ops.kanvas.export_board_image(
+            filepath=os.path.join(tempfile.gettempdir(), 'kanvas_only.png'), scope='SELECTION',
+            only_selected=True, margin=10)
+        check(result == {'FINISHED'}, f'operator with Only Selected {result}')
+        only_path = os.path.join(tempfile.gettempdir(), 'kanvas_only.png')
+        if os.path.exists(only_path):
+            os.remove(only_path)
+        by_id(red_id).parent_frame = ''
+        frame = by_id('frame')
+        frame.show_in_editor = False
+        for item in settings.images:
+            item.is_selected = item.item_id == red_id
+
         # --- Whole board: gradient, text, arrow -----------------------------------------
         rect = br.board_rect(settings, 'ALL')
         full = br.render(settings, rect, 1.0, margin=0, background=(1.0, 1.0, 1.0, 1.0))

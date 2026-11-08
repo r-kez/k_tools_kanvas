@@ -83,6 +83,12 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
     color: bpy.props.FloatVectorProperty(  # type: ignore
         name='Color', description='Background color', subtype='COLOR', size=4,
         default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0)
+    only_selected: bpy.props.BoolProperty(  # type: ignore
+        name='Only Selected',
+        description=('Draw only the selected items (with what is inside a selected frame or '
+                     'group) and the arrows between them. Off, everything inside the area '
+                     'shows, like a crop of the board'),
+        default=True)
     load_image: bpy.props.BoolProperty(  # type: ignore
         name='Load into Blender',
         description=('Also add the picture to this file as a packed Blender image, for use '
@@ -105,12 +111,14 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         from ..utils.board_render import board_rect
         if self.scope == 'VIEW':
             return _view_rect(context)
-        return board_rect(get_settings(context), self.scope)
+        return board_rect(get_settings(context), self.scope, self.only_selected)
 
     def draw(self, context):
         from ..utils.board_render import MAX_SIDE, output_size
         layout = self.layout
         layout.prop(self, 'scope')
+        if self.scope == 'SELECTION':
+            layout.prop(self, 'only_selected')
         layout.prop(self, 'scale')
         layout.prop(self, 'margin')
         rect = self._rect(context)
@@ -145,9 +153,14 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         background = {'TRANSPARENT': (0.0, 0.0, 0.0, 0.0), 'CANVAS': _canvas_color(),
                       'COLOR': tuple(self.color)}[self.background]
         path = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), '.png')
+        from ..utils.board_render import selection_contents
+        only = (selection_contents(settings)
+                if self.scope == 'SELECTION' and self.only_selected else None)
         try:
+            # Annotations belong to no item: a picture of the selection leaves them out.
             picture = render(settings, rect, scale, self.margin, background,
-                             space=context.space_data, frame_number=context.scene.frame_current)
+                             space=None if only else context.space_data,
+                             frame_number=context.scene.frame_current, only=only)
             write_png(path, picture)
         except Exception as exc:
             self.report({'ERROR'}, f'Could not export the picture: {exc}')

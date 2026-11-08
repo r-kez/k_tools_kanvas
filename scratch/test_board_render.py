@@ -49,6 +49,37 @@ try:
     other.show_in_editor = False
     assert br.board_rect(settings, 'ALL') == (-100.0, -50.0, 100.0, 50.0), 'hidden items stay out'
 
+    # --- What a picture of the selection shows ------------------------------------------
+    other.show_in_editor = True
+    frame = settings.images.add()
+    frame.item_type, frame.item_id, frame.frame_node_name = 'FRAME', 'frame', 'kanvas_frame'
+    frame.location, frame.frame_width, frame.frame_height = (-300.0, 300.0), 800.0, 600.0
+    card.parent_frame = 'kanvas_frame'
+    inner = settings.images.add()
+    inner.item_type, inner.item_id, inner.parent_frame = 'TEXT', 'inner', 'kanvas_frame'
+    inner.show_in_editor = False
+    arrows = settings.arrows
+    linked = arrows.add()
+    linked.start_item_id, linked.end_item_id = 'card', 'card'
+    half = arrows.add()
+    half.start_item_id, half.end_item_id = 'card', 'other'
+    loose = arrows.add()
+    loose.start, loose.end = (0.0, 0.0), (10.0, 10.0)
+    for item in settings.images:
+        item.is_selected = item.item_id == 'card'
+    items, kept_arrows = br.selection_contents(settings)
+    assert {item.item_id for item in items} == {'card'}, 'the frame around it stays out'
+    assert [a.as_pointer() for a in kept_arrows] == [linked.as_pointer()], \
+        'only arrows between kept items'
+    assert br.board_rect(settings, 'SELECTION', only_selected=False) == (-100.0, -50.0, 100.0, 50.0)
+    for item in settings.images:
+        item.is_selected = item.item_id == 'frame'
+    items, kept_arrows = br.selection_contents(settings)
+    assert {item.item_id for item in items} == {'frame', 'card'}, \
+        'a selected frame brings its content, not what is hidden'
+    loose.is_selected = True
+    assert loose.as_pointer() in {a.as_pointer() for a in br.selection_contents(settings)[1]}
+
     # --- PNG written by hand, read back by Blender -------------------------------------
     picture = np.zeros((3, 5, 4), np.uint8)
     picture[0, 0] = (255, 0, 0, 255)        # top left: red

@@ -255,6 +255,16 @@ def _draw_arrow_body(shader, smooth_shader, points, arrow, length,
                      arrow, pixel_size, color, prefs)
 
 
+# Arrows an exported picture draws, by `as_pointer()` (None: all). Arrows have no
+# visibility of their own, so a picture of the selection leaves the others out
+# through this. Pointers, not ids: arrows from old files may share an empty id.
+ARROW_FILTER = None
+
+
+def _drawn(arrow):
+    return ARROW_FILTER is None or arrow.as_pointer() in ARROW_FILTER
+
+
 def draw_arrows(settings, pixel_size):
     from ..arrow_geometry import (attachable_anchor_points, curve_midpoint,
                                   curve_points)
@@ -272,6 +282,8 @@ def draw_arrows(settings, pixel_size):
     gpu.state.blend_set('ALPHA')
     try:
         for index, arrow in enumerate(settings.arrows):
+            if not _drawn(arrow):
+                continue
             points = curve_points(settings, arrow)
             start, end = points[0], points[-1]
             length = sum(math.dist(a, b) for a, b in zip(points, points[1:]))
@@ -378,6 +390,8 @@ def draw_arrow_labels(settings, region):
     modern = studio_enabled()
     try:
         for index, arrow in enumerate(settings.arrows):
+            if not _drawn(arrow):
+                continue
             label = arrow.label.strip()
             if not label:
                 continue
