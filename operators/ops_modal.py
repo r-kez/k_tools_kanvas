@@ -113,7 +113,7 @@ def _select_canvas_items(settings, invert=False):
 
 
 SHAPE_GESTURES = {'SHAPE_DRAW', 'SHAPE_VERTEX', 'SHAPE_BEND', 'SHAPE_HANDLE',
-                  'SHAPE_VERTEX_XFORM'}
+                  'SHAPE_VERTEX_XFORM', 'GRADIENT_POINT'}
 
 
 def _undo_content_signature(settings):
@@ -127,6 +127,8 @@ def _undo_content_signature(settings):
                   item.shape_closed if item.item_type == 'SHAPE' else True,
                   tuple((tuple(v.co), v.handle_type, tuple(v.handle_left), tuple(v.handle_right),
                          v.contour) for v in item.shape_vertices)
+                  if item.item_type == 'SHAPE' else (),
+                  (tuple(item.shape_gradient_start), tuple(item.shape_gradient_end))
                   if item.item_type == 'SHAPE' else ())
                  for item in settings.images)
 
@@ -517,6 +519,9 @@ class KanvasInteractionHelpers:
                     or active_shape.is_locked or active_shape.shape_edit_vertices
                     or sum(1 for item in settings.images if item.is_selected) != 1):
                 return -1
+            from ..utils.shape_gradient import gradient_edit_shape
+            if gradient_edit_shape(settings, context) is not None:
+                return -1  # the gradient handles take the place of the box handles
             from ..utils import shape_geometry
             corners, edges, _, rotate = shape_geometry.gizmo_layout(active_shape, s_view)
             if settings.show_rotate_handles and near(rotate):
@@ -827,6 +832,58 @@ class KanvasInteractionHelpers:
         context.area.tag_redraw()
         return self._begin_gesture(context)
 
+    def _start_gradient_gesture(self, context, settings, mouse, pixel_size):
+        """Drag a handle of the gradient being edited: the start (the center of a radial
+        one), the end, or the line between them to move both. None when the press is
+        not on them, so it is handled like any other click."""
+        from ..utils import shape_gradient as sg
+        shape = sg.gradient_edit_shape(settings, context)
+        if shape is None:
+            return None
+        start, end = sg.canvas_points(shape)
+        part = sg.hit_handle(start, end, mouse, sg.HANDLE_HIT_PIXELS * pixel_size)
+        if part is None:
+            return None
+        self.drag_mode = 'GRADIENT_POINT'
+        self.shape_target_id = shape.item_id
+        self.gradient_part = part
+        self.gradient_start = (tuple(shape.shape_gradient_start), tuple(shape.shape_gradient_end))
+        self.gradient_grab = (start, end)
+        self.init_mouse_view = (mouse[0], mouse[1])
+        self.last_mouse_pos = (mouse[0], mouse[1])
+        self.shape_vertex_moved = False
+        self.shape_vertex_pixel = pixel_size
+        context.workspace.status_text_set(
+            'Gradient  |  Ctrl: snap to the box  |  Shift: 15° steps  |  Esc or right-click: cancel')
+        return self._begin_gesture(context)
+
+    def _update_gradient_gesture(self, item, mouse, shift, ctrl):
+        from ..utils import shape_geometry
+        from ..utils import shape_gradient as sg
+        start, end = self.gradient_grab
+        dx, dy = mouse[0] - self.init_mouse_view[0], mouse[1] - self.init_mouse_view[1]
+        part = self.gradient_part
+        if part == 'line':
+            new_start, new_end = (start[0] + dx, start[1] + dy), (end[0] + dx, end[1] + dy)
+            if ctrl:
+                # The start lands on a box point; the end keeps its offset.
+                unit = shape_geometry.canvas_to_unit(item, new_start)
+                snapped = shape_geometry.unit_to_canvas(item, sg.nearest_box_point(unit))
+                shift_x, shift_y = snapped[0] - new_start[0], snapped[1] - new_start[1]
+                new_start = snapped
+                new_end = (new_end[0] + shift_x, new_end[1] + shift_y)
+        else:
+            moving, anchor = (start, end) if part == 'start' else (end, start)
+            point = (moving[0] + dx, moving[1] + dy)
+            if ctrl:
+                unit = shape_geometry.canvas_to_unit(item, point)
+                point = shape_geometry.unit_to_canvas(item, sg.nearest_box_point(unit))
+            if shift:
+                point = sg.constrain_angle(anchor, point)
+            new_start, new_end = (point, end) if part == 'start' else (start, point)
+        item.shape_gradient_start = shape_geometry.canvas_to_unit(item, new_start)
+        item.shape_gradient_end = shape_geometry.canvas_to_unit(item, new_end)
+
     def _start_vertex_transform(self, context, settings, action, mouse):
         """G, R or S in Edit Vertices: move, rotate or scale the selected vertices
         around the middle of their bounds. Returns None when no vertex is selected, so
@@ -949,6 +1006,13 @@ class KanvasInteractionHelpers:
                 item.location = center
             return
         mode = self.drag_mode
+        if mode == 'GRADIENT_POINT':
+            if not self.shape_vertex_moved:
+                if math.dist(self.init_mouse_view, (mouse_x, mouse_y)) < 3.0 * self.shape_vertex_pixel:
+                    return
+                self.shape_vertex_moved = True
+            self._update_gradient_gesture(item, (mouse_x, mouse_y), shift, ctrl)
+            return
         moves = getattr(self, 'shape_vertex_moves', [])
         if mode == 'SHAPE_VERTEX' and not moves:
             return
@@ -1064,8 +1128,11 @@ class KanvasInteractionHelpers:
         mode = self.drag_mode
         self.drag_mode = 'NONE'
         self.shape_target_id = None
-        if mode == 'SHAPE_VERTEX_XFORM':
+        if mode in {'SHAPE_VERTEX_XFORM', 'GRADIENT_POINT'}:
             _clear_status(context)
+        if mode == 'GRADIENT_POINT':
+            context.area.tag_redraw()
+            return
         if item is not None and mode == 'SHAPE_DRAW':
             view = context.region.view2d
             pixel_size = abs(view.region_to_view(1, 0)[0] - view.region_to_view(0, 0)[0])
@@ -1088,8 +1155,13 @@ class KanvasInteractionHelpers:
         mode = self.drag_mode
         self.drag_mode = 'NONE'
         self.shape_target_id = None
-        if mode == 'SHAPE_VERTEX_XFORM':
+        if mode in {'SHAPE_VERTEX_XFORM', 'GRADIENT_POINT'}:
             _clear_status(context)
+        if mode == 'GRADIENT_POINT':
+            if item is not None:
+                item.shape_gradient_start, item.shape_gradient_end = self.gradient_start
+            context.area.tag_redraw()
+            return
         if item is not None and mode == 'SHAPE_DRAW':
             index = next(i for i, other in enumerate(settings.images)
                          if other.item_id == item.item_id)
@@ -2287,6 +2359,9 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             toggle_collapsed()
             context.area.tag_redraw()
             return {'CANCELLED'}
+        gradient_result = self._start_gradient_gesture(context, settings, mouse, pixel_size)
+        if gradient_result is not None:
+            return gradient_result
         vertex_result = self._start_shape_vertex_gesture(
             context, event, settings, mouse, pixel_size)
         if vertex_result is not None:

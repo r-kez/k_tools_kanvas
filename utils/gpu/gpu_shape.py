@@ -307,6 +307,9 @@ def _draw_selection(shader, smooth, settings, item, pixel_size):
                         thickness, pixel_size, color)
     if not (_sole_selection(settings, item) and settings.show_gizmos):
         return
+    from ..shape_gradient import gradient_edit_shape
+    if gradient_edit_shape(settings) is not None:
+        return  # the gradient handles take the place of the box handles
     size = settings.gizmo_size * pixel_size
     corner_points, edge_points, stem, rotate = geometry.gizmo_layout(item, size)
     if settings.show_scale_handles:
@@ -318,6 +321,31 @@ def _draw_selection(shader, smooth, settings, item, pixel_size):
         _draw_plain_strokes(shader, smooth, [[stem, rotate]], thickness, pixel_size, color)
         _triangles(shader, _circle(rotate, 6.0 * pixel_size), HANDLE_DARK)
         _triangles(shader, _circle(rotate, 4.5 * pixel_size), color)
+
+
+def _draw_gradient_handles(shader, smooth, item, pixel_size):
+    """Line from the start to the end of the gradient, a dot per stop in its color, a
+    round handle at the start (the center of a radial one), a square at the end, and
+    for a radial gradient the circle it fills."""
+    from ..shape_gradient import canvas_points, stop_markers, stop_records
+    start, end = canvas_points(item)
+    color = selection_color()
+    width = max(1.0, 1.5) * pixel_size
+    if item.shape_fill_type == 'RADIAL':
+        radius = math.dist(start, end)
+        steps = 64
+        ring = [(start[0] + radius * math.cos(math.tau * i / steps),
+                 start[1] + radius * math.sin(math.tau * i / steps)) for i in range(steps + 1)]
+        _draw_plain_strokes(shader, smooth, _outline_strokes(ring, 'DASHED', width, closed=False),
+                            width, pixel_size, (*color[:3], 0.7))
+    _draw_plain_strokes(shader, smooth, [[start, end]], 3.0 * pixel_size, pixel_size, HANDLE_DARK)
+    _draw_plain_strokes(shader, smooth, [[start, end]], width, pixel_size, HANDLE_LIGHT)
+    for point, stop_color in stop_markers(start, end, stop_records(item)):
+        _triangles(shader, _circle(point, 4.5 * pixel_size), HANDLE_DARK)
+        _triangles(shader, _circle(point, 3.2 * pixel_size), (*stop_color[:3], 1.0))
+    _triangles(shader, _circle(start, 6.5 * pixel_size), HANDLE_DARK)
+    _triangles(shader, _circle(start, 5.0 * pixel_size), HANDLE_LIGHT)
+    _draw_handle(shader, end, pixel_size, 6.0)
 
 
 # --- Edit Vertices: mode badge and shortcut panel --------------------------------------
@@ -418,10 +446,14 @@ def draw_shape_overlays(settings, pixel_size, view_bounds):
     old_blend = gpu.state.blend_get()
     gpu.state.blend_set('ALPHA')
     try:
+        from ..shape_gradient import gradient_edit_shape
+        editing_gradient = gradient_edit_shape(settings)
         for index in indices:
             item = settings.images[index]
             if _visible(item, view_bounds):
                 _draw_selection(shader, smooth, settings, item, pixel_size)
+                if editing_gradient is not None and item.item_id == editing_gradient.item_id:
+                    _draw_gradient_handles(shader, smooth, item, pixel_size)
     finally:
         gpu.state.blend_set(old_blend)
 

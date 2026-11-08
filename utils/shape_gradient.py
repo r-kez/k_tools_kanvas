@@ -254,3 +254,74 @@ def unshare_ramps():
 def is_ramp_texture(id_data):
     import bpy
     return isinstance(id_data, bpy.types.Texture) and id_data.name.startswith(RAMP_NAME)
+
+
+# --- Handles on the canvas -------------------------------------------------------------
+
+HANDLE_HIT_PIXELS = 9.0
+ANGLE_STEP = math.radians(15.0)
+# Points of the shape box that Ctrl snaps to: corners, middles of the sides, center.
+BOX_POINTS = tuple((x, y) for x in (-0.5, 0.0, 0.5) for y in (-0.5, 0.0, 0.5))
+
+
+def hit_handle(start, end, point, radius):
+    """'start', 'end', 'line' (anywhere along the segment between them) or None."""
+    if math.dist(point, start) <= radius:
+        return 'start'
+    if math.dist(point, end) <= radius:
+        return 'end'
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    length = dx * dx + dy * dy
+    if length <= 1e-12:
+        return None
+    t = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length
+    if not 0.0 < t < 1.0:
+        return None
+    nearest = (start[0] + dx * t, start[1] + dy * t)
+    return 'line' if math.dist(point, nearest) <= radius * 0.6 else None
+
+
+def constrain_angle(anchor, point, step=ANGLE_STEP):
+    """`point` turned around `anchor` to the nearest multiple of `step`, same distance."""
+    dx, dy = point[0] - anchor[0], point[1] - anchor[1]
+    distance = math.hypot(dx, dy)
+    if distance <= 1e-12:
+        return point
+    angle = round(math.atan2(dy, dx) / step) * step
+    return anchor[0] + math.cos(angle) * distance, anchor[1] + math.sin(angle) * distance
+
+
+def nearest_box_point(unit):
+    """The corner, side middle or center of the shape box closest to a unit point."""
+    return min(BOX_POINTS, key=lambda p: math.dist(p, unit))
+
+
+def stop_markers(start, end, stops):
+    """(canvas point, color) of each stop along the handle line."""
+    return [((start[0] + (end[0] - start[0]) * stop[4], start[1] + (end[1] - start[1]) * stop[4]),
+             tuple(stop[:4])) for stop in stops]
+
+
+def gradient_edit_shape(settings, context=None):
+    """The shape whose gradient handles show on the canvas, or None.
+
+    They show while the gradient is what you are editing: one selected, unlocked,
+    visible shape with a gradient fill, not in Edit Vertices, and the sidebar of this
+    editor open on the Fill tab. Otherwise the canvas stays as it was.
+    """
+    import bpy
+    context = context or bpy.context
+    index = settings.active_image_index
+    item = settings.images[index] if 0 <= index < len(settings.images) else None
+    if (item is None or item.item_type != 'SHAPE' or not is_gradient(item)
+            or not item.shape_show_fill or not item.shape_closed or item.shape_edit_vertices
+            or not item.is_selected or item.is_locked or not item.show_in_editor
+            or sum(1 for other in settings.images if other.is_selected) != 1):
+        return None
+    tabs = getattr(getattr(context, 'window_manager', None), 'kanvas_tabs', None)
+    if tabs is None or tabs.shape != 'FILL':
+        return None
+    space = getattr(context, 'space_data', None)
+    if space is not None and not getattr(space, 'show_region_ui', True):
+        return None
+    return item

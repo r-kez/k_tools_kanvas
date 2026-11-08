@@ -27,7 +27,7 @@ def check(condition, message):
         errors.append(message)
 
 
-def render(shape):
+def render(shape, overlays=None):
     """Draw one shape covering canvas x 0..200, y 0..100 into a W x H buffer."""
     from k_tools_kanvas.utils.gpu.gpu_shape import draw_shape_body
     offscreen = gpu.types.GPUOffScreen(W, H)
@@ -40,7 +40,11 @@ def render(shape):
                 with gpu.matrix.push_pop_projection():
                     gpu.matrix.load_projection_matrix(Matrix((
                         (2.0 / W, 0, 0, -1), (0, 2.0 / H, 0, -1), (0, 0, 1, 0), (0, 0, 0, 1))))
-                    draw_shape_body(shape, 1.0, (-1e6, -1e6, 1e6, 1e6))
+                    if overlays is None:
+                        draw_shape_body(shape, 1.0, (-1e6, -1e6, 1e6, 1e6))
+                    else:
+                        from k_tools_kanvas.utils.gpu.gpu_shape import draw_shape_overlays
+                        draw_shape_overlays(overlays, 1.0, (-1e6, -1e6, 1e6, 1e6))
             pixels = framebuffer.read_color(0, 0, W, H, 4, 0, 'FLOAT')
             pixels.dimensions = W * H * 4
             values = list(pixels)
@@ -110,6 +114,22 @@ def run():
         package._redraw_boards = spy
         package.subscribe_gradient_edits()
         shape.shape_gradient_texture.color_ramp.elements[0].color = (0, 1, 0, 1)
+        # Gradient handles: drawn on the Fill tab with the shape selected alone.
+        shape.shape_gradient_spread = 'PAD'
+        shape.shape_gradient_start, shape.shape_gradient_end = (-0.25, 0.0), (0.25, 0.0)
+        for other in settings.images:
+            other.is_selected = other == shape
+        settings.active_image_index = len(settings.images) - 1
+        bpy.context.window_manager.kanvas_tabs.shape = 'FILL'
+        pixel = render(shape, overlays=settings)
+        bright = lambda c: min(c[:3]) > 0.8 and c[3] > 0.8
+        check(bright(pixel(50, 50)), f'start handle {pixel(50, 50)}')
+        check(bright(pixel(150, 50)), f'end handle {pixel(150, 50)}')
+        check(pixel(100, 50)[3] > 0.5, f'handle line {pixel(100, 50)}')
+        check(pixel(100, 80)[3] < 0.1, f'nothing away from the line {pixel(100, 80)}')
+        bpy.context.window_manager.kanvas_tabs.shape = 'LINE'
+        pixel = render(shape, overlays=settings)
+        check(pixel(100, 50)[3] < 0.1, f'no handles off the Fill tab {pixel(100, 50)}')
         output = io.StringIO()
         with redirect_stdout(output):
             bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=3)
