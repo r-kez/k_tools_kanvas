@@ -25,8 +25,9 @@ try:
             pass
 
     from k_tools_kanvas.preferences import KanvasPreferences
-    from k_tools_kanvas.ui.sections.image_properties import (
-        _draw_auto_select, draw_color_properties, draw_mask_properties)
+    from k_tools_kanvas.ui.tabs.auto_select import draw_auto_select as _draw_auto_select
+    from k_tools_kanvas.ui.tabs.image_mask import draw_mask_properties
+    from k_tools_kanvas.ui.tabs.image_markup import draw_color_properties
 
     tree = bpy.data.node_groups.new('ui', 'KanvasNodeTree')
     item = tree.kanvas_settings.images.add()

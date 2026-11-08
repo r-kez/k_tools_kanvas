@@ -53,11 +53,23 @@ Press `N` over the canvas and open the **K-Tools** tab.
 | --- | --- |
 | **Kanvas** | The Edit and Move switch and the overlay option |
 | **Items** | The item list, plus the list and settings of arrows |
-| **Selection** | Actions and properties for what is selected: image transform and adjustments, text card settings, or frame settings. It shows "Nothing selected" when empty and holds the **Mask** and **Markup** subpanels for the active image |
+| **Selection** | Actions and properties for what is selected, in tabs (see below). It shows "Nothing selected" when empty |
 | **Align** | Align and distribute commands |
 | **Gizmos** | Size and visibility of the transform handles |
 | **Snap** | Grid and edge snapping |
 | **Debug** | Diagnostics and reset tools. Hidden unless enabled in the preferences |
+
+### The Selection panel
+
+When something is on that you might not see from the tab you are in (a mask, color markup, a mode being edited), a line above the tabs says so. Rename items in the item list or with `F2`. Images, shapes and text cards show **tabs**, so only one group of settings is open at a time:
+
+| Item | Tabs |
+| --- | --- |
+| Image | **Image** (file, source, position, rotation, scale, stretch, shear, flip) · **Adjust** (opacity, brightness, contrast, saturation, tint, value checks) · **Mask** · **Color** (color markup) |
+| Shape | **Shape** (kind, vertices, contours, corners, position and size, opacity, SVG export) · **Fill** (color or gradient) · **Line** · **Text** |
+| Text card | **Card** (position, size, colors, opacity) · **Content** (title, text, Markdown, checklist) |
+
+Frames, groups and comparison cards have few settings and show them without tabs. Entering a mode opens its tab: `M` the **Mask** tab, `C` the **Color** tab, `E` the **Shape** tab; leaving the mode keeps the tab. Each kind of item remembers its tab for the session, so selecting another shape keeps you in **Fill**. In a narrow sidebar the tabs show only their icons; hover one for its name.
 
 ### The Items panel
 

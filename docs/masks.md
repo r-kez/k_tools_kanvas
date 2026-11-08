@@ -5,7 +5,7 @@ A **mask** shows only part of an image. It is stored with the image item on the 
 ## Editing a mask
 
 1. Select an image.
-2. Press `M`, or click **Edit Mask (M)** in the **Mask** subpanel of the **Selection** panel.
+2. Press `M`, or click **Edit Mask (M)** in the **Mask** tab of the **Selection** panel. **Use Mask** at the top of the tab turns the mask on or off.
 3. Paint, draw, or select the parts you want to show.
 4. Press `M` again to finish.
 

@@ -18,8 +18,9 @@ from k_tools_kanvas.utils.gpu.gpu_mask import rasterize_mask
 
 addon.register()
 try:
-    assert hasattr(bpy.types, 'KANVAS_PT_MaskPanel')
-    assert hasattr(bpy.types, 'KANVAS_PT_ColorPanel')
+    # Mask and Markup are tabs of the Selection panel.
+    from k_tools_kanvas.ui.tabs import TABS
+    assert {'MASK', 'MARKUP'} <= set(TABS['image'])
     assert hasattr(bpy.types, 'KANVAS_UL_markup_regions')
     assert ('Color Mode', 'COLOR') in UI_ACTIONS
     area = next(area for area in bpy.context.screen.areas if area.type == 'VIEW_3D')

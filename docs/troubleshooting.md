@@ -56,10 +56,10 @@ Hold `Ctrl` and click. Only `http` and `https` links open.
 ## Masks and colors
 
 **Region names do not show on the image.**
-**Names** is off by default for each image. Turn it on in the **Markup** subpanel. Names are also hidden while you paint, on very small images, and behind text cards.
+**Names** is off by default for each image. Turn it on in the **Color** tab of the **Selection** panel. Names are also hidden while you paint, on very small images, and behind text cards.
 
 **The colors vanished.**
-Check the **Markup** checkbox in the subpanel header, the eye on the region, and whether **Isolate Color** is showing a different region. Press `\` to show all.
+Check **Show Markup** at the top of the **Color** tab, the eye on the region, and whether **Isolate Color** is showing a different region. Press `\` to show all.
 
 **Mask or color edges look soft on a large image.**
 Masks and color layers are stored at up to 512 pixels on the longest side, so very fine details can look soft on very large images.

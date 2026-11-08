@@ -4,9 +4,9 @@
 
 Each image keeps its own list of **color regions**. A region has a name, a color, an opacity, and the paint itself. Regions are saved with the image item, and duplicating the item copies them.
 
-## The Markup panel
+## The Color tab
 
-Select an image and open the **Markup** subpanel under **Selection**. The checkbox in its header shows or hides all colors on that image.
+Select an image and open the **Color** tab of the **Selection** panel (pressing `C` opens it too). **Show Markup** at the top shows or hides all colors on that image.
 
 | Control | What it does |
 | --- | --- |
@@ -124,7 +124,7 @@ With **Done Lines** on (per image, only when a checklist is linked), a region wh
 ## Hiding colors
 
 - The eye on a region hides that region.
-- The **Markup** checkbox in the panel header hides all colors on the image.
+- **Show Markup** at the top of the **Color** tab hides all colors on the image.
 
 ## Next
 

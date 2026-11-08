@@ -114,6 +114,8 @@ In **Edit Vertices**, every contour is edited like a shape of its own: adding a 
 
 ## Appearance
 
+In the **Selection** panel, the fill is in the **Fill** tab, the line (**Outline**, **Join**, **Ends**, **Align**) in the **Line** tab, and **Corner Radius** and **Opacity** in the **Shape** tab.
+
 | Option | What it does |
 | --- | --- |
 | **Fill** | Turns the fill on or off, with its color and opacity. **Solid**, **Linear** or **Radial** below it picks one color or a [gradient](#gradients) |
@@ -130,7 +132,7 @@ Fill and outline cannot both be off, so a shape never disappears: while one is o
 
 ### Gradients
 
-Choose **Linear** or **Radial** under **Fill** (closed shapes only). The first time, the gradient goes from the fill color to clear; after that the shape keeps its own gradient, even while you switch back to **Solid** and again.
+In the **Fill** tab of the **Selection** panel, choose **Linear** or **Radial** (closed shapes only). The first time, the gradient goes from the fill color to clear; after that the shape keeps its own gradient, even while you switch back to **Solid** and again.
 
 | Option | What it does |
 | --- | --- |
@@ -163,7 +165,7 @@ The order of selection decides, not the layers on the canvas. For Union, Interse
 
 ## Text inside a shape
 
-Type in the **Text** field of the **Selection** panel. It is a single line, meant for a short label. The text is centered and turns with the shape. Its size is fixed on the canvas, like the shape's: it grows and shrinks with the zoom, and it is hidden when it would be too small to read. It wraps inside the box of the shape, with the same line breaks at every zoom level, and never goes past the box: a text that does not fit ends in an ellipsis. Make the shape larger to show more. Set the font size and color next to the field, or turn **Text** off to hide it without deleting it. The text is found by the search field of the item list.
+Type in the field of the **Text** tab of the **Selection** panel. It is a single line, meant for a short label. The text is centered and turns with the shape. Its size is fixed on the canvas, like the shape's: it grows and shrinks with the zoom, and it is hidden when it would be too small to read. It wraps inside the box of the shape, with the same line breaks at every zoom level, and never goes past the box: a text that does not fit ends in an ellipsis. Make the shape larger to show more. Set the font size and color next to the field, or turn **Text** off to hide it without deleting it. The text is found by the search field of the item list.
 
 ## SVG files
 

@@ -271,13 +271,59 @@ def update_shape_appearance(self, context):
         context.area.tag_redraw()
 
 
+def show_panel_tab(kind, tab):
+    """Open a tab of the Selection panel (entering a mode shows its controls)."""
+    tabs = getattr(getattr(bpy.context, 'window_manager', None), 'kanvas_tabs', None)
+    if tabs is not None and getattr(tabs, kind) != tab:
+        setattr(tabs, kind, tab)
+
+
 def update_shape_edit_vertices(self, context):
     """Leaving Edit Vertices forgets the vertex selection, so it never comes back stale."""
     if not self.shape_edit_vertices:
         for vertex in self.shape_vertices:
             if vertex.select:
                 vertex.select = False
+    else:
+        show_panel_tab('shape', 'MAIN')
     update_shape_appearance(self, context)
+
+
+def update_mask_editing(self, context):
+    if self.mask_editing:
+        show_panel_tab('image', 'MASK')
+
+
+def update_markup_editing(self, context):
+    if self.markup_editing:
+        show_panel_tab('image', 'MARKUP')
+
+
+def _tab_items(tabs):
+    return [(identifier, label, description, icon, number)
+            for number, (identifier, label, description, icon) in enumerate(tabs)]
+
+
+class KanvasPanelTabs(bpy.types.PropertyGroup):
+    """Which tab of the Selection panel is open, per kind of item. Kept for the session
+    only (on the window manager, which Blender does not save): a choice of view, not of
+    the board."""
+    image: bpy.props.EnumProperty(  # type: ignore
+        name='Image Tab', items=_tab_items((
+            ('MAIN', 'Image', 'The image file, place, size and turn', 'IMAGE_DATA'),
+            ('ADJUST', 'Adjust', 'Brightness, contrast, colors, values and opacity', 'MODIFIER'),
+            ('MASK', 'Mask', 'Hide parts of the image', 'MOD_MASK'),
+            ('MARKUP', 'Color', 'Color Markup: paint named color regions on the image', 'BRUSH_DATA'))))
+    shape: bpy.props.EnumProperty(  # type: ignore
+        name='Shape Tab', items=_tab_items((
+            ('MAIN', 'Shape', 'Kind, vertices, outline, place and size', 'MESH_PLANE'),
+            ('FILL', 'Fill', 'Fill color or gradient', 'SNAP_FACE'),
+            ('LINE', 'Line', 'The line around the shape', 'IPO_LINEAR'),
+            ('TEXT', 'Text', 'Text inside the shape', 'FONT_DATA'))))
+    text: bpy.props.EnumProperty(  # type: ignore
+        name='Card Tab', items=_tab_items((
+            ('CARD', 'Card', 'Place, size, colors and opacity of the card', 'TEXT'),
+            ('CONTENT', 'Content', 'Title, text, Markdown or checklist', 'LINENUMBERS_ON'))))
 
 
 def update_shape_curve_resolution(self, context):
@@ -927,7 +973,8 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
     mask_polygons: bpy.props.CollectionProperty(type=KanvasMaskPolygon)  # type: ignore
     mask_next_sequence: bpy.props.IntProperty(default=1)  # type: ignore
     mask_revision: bpy.props.IntProperty(default=0, options={'SKIP_SAVE'})  # type: ignore
-    mask_editing: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})  # type: ignore
+    mask_editing: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},  # type: ignore
+                                         update=update_mask_editing)
     mask_tool: bpy.props.EnumProperty(  # type: ignore
         name='Mask Tool',
         description='Choose Brush, Polygon, or Rectangle while editing the mask',
@@ -990,7 +1037,8 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         update=lambda self, context: _follow_isolation(self, context),
     )
     markup_revision: bpy.props.IntProperty(default=0, options={'SKIP_SAVE'})  # type: ignore
-    markup_editing: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})  # type: ignore
+    markup_editing: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},  # type: ignore
+                                           update=update_markup_editing)
     markup_tool: bpy.props.EnumProperty(  # type: ignore
         name='Color Tool',
         description='Brush, polygon, or rectangle tool for the active color region',
@@ -1648,8 +1696,10 @@ def register():
         type=KanvasSettings,
     )
     bpy.types.Scene.kanvas_tree_migrated = bpy.props.BoolProperty(default=False)
+    bpy.types.WindowManager.kanvas_tabs = bpy.props.PointerProperty(type=KanvasPanelTabs)
 
 def unregister():
+    del bpy.types.WindowManager.kanvas_tabs
     del bpy.types.Scene.kanvas_tree_migrated
     del bpy.types.Scene.kanvas_settings
     del KanvasNodeTree.kanvas_settings

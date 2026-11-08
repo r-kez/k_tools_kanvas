@@ -114,14 +114,14 @@ try:
             return call
         def __setattr__(self, name, value): pass
 
-    from k_tools_kanvas.ui.sections.image_properties import draw_image_properties
+    from k_tools_kanvas.ui.tabs.image_adjust import draw as draw_image_properties
     items[1].is_selected = True
-    draw_image_properties(Layout(), settings, items[0])
+    draw_image_properties(Layout(), bpy.context, settings, items[0])
     drawn = [args[1] for name, args, kwargs in calls if name == 'prop' and len(args) > 1]
     assert 'batch_value_gray' in drawn and 'batch_value_levels' in drawn, drawn
     items[1].is_selected = False
     calls.clear()
-    draw_image_properties(Layout(), settings, items[0])
+    draw_image_properties(Layout(), bpy.context, settings, items[0])
     drawn = [args[1] for name, args, kwargs in calls if name == 'prop' and len(args) > 1]
     assert 'value_gray' in drawn and 'value_levels' in drawn, drawn
     print('VALUE CHECK OK')

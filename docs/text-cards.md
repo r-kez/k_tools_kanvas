@@ -15,7 +15,7 @@ Cards support several lines and wrap text to the card width. Line breaks stay in
 
 ## Card settings
 
-Open the **Selection** panel with a card selected.
+Open the **Selection** panel with a card selected. **Layout** and **Appearance** are in the **Card** tab; the title, text and checklist are in the **Content** tab.
 
 **Layout**
 

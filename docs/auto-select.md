@@ -30,7 +30,7 @@ The model files are licensed Apache-2.0.
 
 ## Using it
 
-1. Select an image and click **Analyze Image** in the **Auto Select** box of the **Mask** or **Markup** subpanel. The button reads *Analyzing...* until it is done. The first analysis also loads the model, so it takes a little longer.
+1. Select an image and click **Analyze Image** in the **Auto Select** box of the **Mask** or **Color** tab of the **Selection** panel. The button reads *Analyzing...* until it is done. The first analysis also loads the model, so it takes a little longer.
 2. Enter [Mask](masks.md) or [Color](color-markup.md) mode.
 3. Choose the **Auto Select** tool (`A`, `Tab`, or the panel button). It is available once the image is analyzed.
 4. Click on what you want.

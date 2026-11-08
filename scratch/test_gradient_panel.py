@@ -28,7 +28,10 @@ try:
         def __setattr__(self, name, value):
             pass
 
-    from k_tools_kanvas.ui.sections.shape_properties import draw_shape_properties
+    from k_tools_kanvas.ui.tabs.shape_fill import draw as draw_fill
+
+    def draw_shape_properties(layout, settings, item):
+        draw_fill(layout, bpy.context, settings, item)
     tree = bpy.data.node_groups.new('ui', 'KanvasNodeTree')
     settings = tree.kanvas_settings
     item = settings.images.add()
