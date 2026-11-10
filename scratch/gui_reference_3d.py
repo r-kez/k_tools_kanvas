@@ -1,4 +1,5 @@
-"""Send to 3D View on a real GPU: a masked image becomes a reference image empty of the
+"""Send to 3D View as an image file (Live off), on a real GPU: a masked image becomes a
+reference image empty of the
 cropped size at the 3D cursor, facing its view, in the Kanvas References collection,
 listed in the scene; a blueprint set gets Front and Right; Update Reference follows a
 new mask in the same image; an unsaved file packs the picture, a saved one writes it
@@ -76,7 +77,7 @@ def run():
 
     # --- One masked image -------------------------------------------------------------
     with override():
-        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT', size=2.0, opacity=0.5)
+        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT', live=False, size=2.0, opacity=0.5)
     check(result == {'FINISHED'}, f'add {result}')
     check(len(scene.kanvas_references) == 1, f'listed {len(scene.kanvas_references)}')
     obj = scene.kanvas_references[0].object
@@ -108,7 +109,7 @@ def run():
     # --- A blueprint set of two -------------------------------------------------------
     by_id('side').is_selected = True
     with override():
-        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT')
+        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT', live=False)
     check(result == {'FINISHED'} and len(scene.kanvas_references) == 3,
           f'blueprint {result} {len(scene.kanvas_references)}')
     views = [entry.view for entry in scene.kanvas_references[1:]]
@@ -154,7 +155,7 @@ def run():
     for item in settings.images:
         item.is_selected = item.item_id == 'side'
     with override():
-        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT')
+        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT', live=False)
     obj = bpy.context.scene.kanvas_references[-1].object
     written = os.path.join(folder, 'assets', 'kanvas', 'references')
     check(result == {'FINISHED'} and obj.data.packed_file is None

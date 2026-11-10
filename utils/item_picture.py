@@ -129,6 +129,20 @@ def _bounds(points):
             max(p[0] for p in points), max(p[1] for p in points))
 
 
+def picture_quad(item, crop_to_mask=True, keep_stretch=False):
+    """What a live reference draws: (corners, uvs, bounds). `corners` are the four
+    corners of what shows, in picture space (image pixels around the middle, stretch and
+    shear applied when kept), `uvs` the image coordinates at those corners, `bounds`
+    (x0, y0, x1, y1) around the corners. None when the mask hides everything."""
+    uv = visible_uv_rect(item) if crop_to_mask else (0.0, 0.0, 1.0, 1.0)
+    if uv is None:
+        return None
+    uvs = [(uv[0], uv[1]), (uv[2], uv[1]), (uv[2], uv[3]), (uv[0], uv[3])]
+    kept = _kept(item, keep_stretch)
+    corners = [_apply(kept, uv_to_image(item, u, v)) for u, v in uvs]
+    return corners, uvs, _bounds(corners)
+
+
 def visible_canvas_bounds(item):
     """Canvas rectangle around what the mask leaves visible of an image item (the whole
     image without a mask), None when the mask hides everything."""

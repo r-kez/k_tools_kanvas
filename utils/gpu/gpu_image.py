@@ -258,40 +258,51 @@ class KanvasTexture:
 
     def draw_rect(self, rect, uv_rect=(0.0, 0.0, 1.0, 1.0), opacity=1.0, color_tint=(1.0, 1.0, 1.0),
                   brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
-                  flip_h=False, flip_v=False):
-        """Draw part of the image into an axis-aligned rectangle (region pixels in POST_PIXEL)."""
-        if not self.texture:
-            return
-        shader = get_kanvas_shader()
-        if not shader:
-            return
+                  flip_h=False, flip_v=False, mask_texture=None, markup_texture=None,
+                  value_mode=0.0, value_levels=0.0):
+        """Draw part of the image into an axis-aligned rectangle (region pixels in POST_PIXEL).
+        `uv_rect` is (u, v) at the left/bottom then at the right/top of the rectangle, so
+        u0 > u1 mirrors. A mask or markup texture is read at the same coordinates."""
         left, bottom, right, top = rect
         u0, v0, u1, v1 = uv_rect
         if flip_h:
             u0, u1 = 1.0 - u0, 1.0 - u1
         if flip_v:
             v0, v1 = 1.0 - v0, 1.0 - v1
-        batch = batch_for_shader(shader, 'TRI_FAN', {
-            'pos': [(left, bottom), (right, bottom), (right, top), (left, top)],
-            'texCoord': [(u0, v0), (u1, v0), (u1, v1), (u0, v1)],
-        })
+        self.draw_quad([(left, bottom), (right, bottom), (right, top), (left, top)],
+                       [(u0, v0), (u1, v0), (u1, v1), (u0, v1)], opacity, color_tint,
+                       brightness, contrast, saturation, use_color_correction,
+                       mask_texture, markup_texture, value_mode, value_levels)
+
+    def draw_quad(self, corners, uvs, opacity=1.0, color_tint=(1.0, 1.0, 1.0),
+                  brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
+                  mask_texture=None, markup_texture=None, value_mode=0.0, value_levels=0.0):
+        """Draw the image on four corners (any quad in the current matrix space, such as
+        a plane in the 3D View) with `uvs` the image coordinates at each corner. A mask
+        or markup texture is read at the same coordinates."""
+        if not self.texture:
+            return
+        shader = get_kanvas_shader()
+        if not shader:
+            return
+        batch = batch_for_shader(shader, 'TRI_FAN', {'pos': corners, 'texCoord': uvs})
         previous = gpu.state.blend_get()
         try:
             gpu.state.blend_set('ALPHA')
             shader.bind()
             shader.uniform_sampler('image', self.texture)
-            shader.uniform_sampler('mask_image', self.texture)
-            shader.uniform_sampler('markup_image', self.texture)
+            shader.uniform_sampler('mask_image', mask_texture or self.texture)
+            shader.uniform_sampler('markup_image', markup_texture or self.texture)
             shader.uniform_float('color', (color_tint[0], color_tint[1], color_tint[2], opacity))
             shader.uniform_float('brightness', brightness)
             shader.uniform_float('contrast', contrast)
             shader.uniform_float('saturation', saturation)
             shader.uniform_float('use_color_correction', float(use_color_correction))
-            shader.uniform_float('mask_enabled', 0.0)
-            shader.uniform_float('markup_enabled', 0.0)
+            shader.uniform_float('mask_enabled', float(mask_texture is not None))
+            shader.uniform_float('markup_enabled', float(markup_texture is not None))
             if shader_supports_value_view():
-                shader.uniform_float('value_mode', 0.0)
-                shader.uniform_float('value_levels', 0.0)
+                shader.uniform_float('value_mode', value_mode)
+                shader.uniform_float('value_levels', value_levels)
             batch.draw(shader)
         except Exception as exc:
             print(f'Kanvas: Draw error: {exc}')

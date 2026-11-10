@@ -1,4 +1,5 @@
-"""Kanvas images in the 3D View as reference image empties.
+"""Kanvas images in the 3D View as reference image empties (overlays are in
+`overlay_3d`).
 
 The picture comes from `item_picture` (the image as edited on the board, upright, cropped
 to its mask). It is written as a PNG and loaded as a Blender image: into the assets

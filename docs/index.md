@@ -25,7 +25,7 @@ This documentation is written for people who use Kanvas. It explains what each t
 | [Arrows](arrows.md) | Connecting items with arrows |
 | [Shapes](shapes.md) | Drawing shapes, free paths with the pen and polygons; editing vertices and curves; holes, line styles and rounded corners; Shape Tools (union, difference, offset...); SVG import, drag and export |
 | [Exporting a picture](export-image.md) | Saving the selection, the board, the view or one image as PNG, also as a texture in Blender |
-| [References in the 3D View](references-3d.md) | Sending images to the 3D View as reference images, blueprint sets, and keeping them up to date |
+| [References in the 3D View](references-3d.md) | Sending images to the 3D View as reference images or live overlays, blueprint sets, and keeping them up to date |
 
 ## Marking up images
 

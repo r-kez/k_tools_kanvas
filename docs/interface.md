@@ -98,7 +98,7 @@ Right-click an item to open the **Kanvas** menu. Its entries depend on the selec
 - **Edit:** duplicate, **Copy Style**, **Paste Style**, or delete.
 - **Add:** the same entries as the **Add** menu.
 - **Export Image...:** save a PNG of the selection, the board or the view (see [Exporting a picture](export-image.md)).
-- **Send to 3D View...:** with images selected, add them to the 3D View as reference images (see [References in the 3D View](references-3d.md)).
+- **Send to 3D View...:** with images selected, add them to the 3D View as reference images or overlays (see [References in the 3D View](references-3d.md)).
 
 ## Hover cursor and feedback
 

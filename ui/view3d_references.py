@@ -16,11 +16,23 @@ class KANVAS_UL_References3D(bpy.types.UIList):
 
     def draw_item(self, context, layout, data, entry, icon, active_data, active_property,
                   index=0, flt_flag=0):
-        obj = entry.object
         row = layout.row(align=True)
-        orphan = ref.board_item(entry.board, entry.item_id) is None
+        item = ref.board_item(entry.board, entry.item_id)
+        orphan = item is None
+        if entry.kind == 'OVERLAY':
+            row.label(text=item.name if item else entry.name,
+                      icon='ERROR' if orphan else 'OVERLAY')
+            if entry.adjusting:
+                row.label(text='', icon='OBJECT_ORIGIN')
+            sub = row.row()
+            sub.alignment = 'RIGHT'
+            sub.label(text='Not on the board' if orphan else 'Overlay')
+            row.prop(entry, 'show', text='', emboss=False,
+                     icon='HIDE_OFF' if entry.show else 'HIDE_ON')
+            return
+        obj = entry.object
         row.label(text=obj.name if obj else '?',
-                  icon='ERROR' if orphan else 'OUTLINER_OB_IMAGE')
+                  icon='ERROR' if orphan else ('LINKED' if entry.live else 'OUTLINER_OB_IMAGE'))
         view = dict((key, name) for key, name, _ in ref.VIEW_ITEMS).get(entry.view, '')
         sub = row.row()
         sub.alignment = 'RIGHT'
@@ -59,6 +71,11 @@ class KANVAS_PT_References3D(bpy.types.Panel):
             column.label(text='In Kanvas, select images and choose')
             column.label(text='Send to 3D View in the right-click menu')
             return
+        if any(entry.kind == 'OVERLAY' for entry in scene.kanvas_references):
+            hidden = scene.kanvas_overlays_hidden
+            layout.prop(scene, 'kanvas_overlays_hidden', toggle=True,
+                        text='Show Overlays' if hidden else 'Hide Overlays',
+                        icon='HIDE_ON' if hidden else 'HIDE_OFF')
         row = layout.row()
         row.template_list('KANVAS_UL_references_3d', '', scene, 'kanvas_references',
                           scene, 'kanvas_reference_index', rows=3)
@@ -67,7 +84,8 @@ class KANVAS_PT_References3D(bpy.types.Panel):
         column.operator('kanvas.show_reference_in_kanvas', icon='VIEWZOOM', text='')
         column.separator()
         column.operator('kanvas.remove_3d_reference', icon='TRASH', text='')
-        layout.operator('kanvas.update_all_3d_references', icon='FILE_REFRESH')
+        if any(entry.kind == 'EMPTY' for entry in scene.kanvas_references):
+            layout.operator('kanvas.update_all_3d_references', icon='FILE_REFRESH')
 
 
 class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
@@ -89,10 +107,13 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
     def draw(self, context):
         scene = context.scene
         entry = scene.kanvas_references[scene.kanvas_reference_index]
-        obj = entry.object
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False
+        if entry.kind == 'OVERLAY':
+            self._draw_overlay(layout, entry)
+            return
+        obj = entry.object
         column = layout.column()
         column.prop(obj, 'empty_display_size', text='Size')
         row = column.row(heading='Opacity')
@@ -111,4 +132,28 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
         column.prop(entry, 'crop_to_mask')
         column.prop(entry, 'keep_stretch', text='Stretch and Shear')
         column.prop(entry, 'include_markup')
-        layout.operator('kanvas.update_3d_reference', icon='FILE_REFRESH')
+        if entry.live:
+            layout.label(text='Live: drawn from the board', icon='LINKED')
+            layout.operator('kanvas.bake_3d_reference', icon='FILE_IMAGE')
+        else:
+            layout.label(text='Image file: update after edits', icon='FILE_IMAGE')
+            layout.operator('kanvas.update_3d_reference', icon='FILE_REFRESH')
+            layout.operator('kanvas.make_3d_reference_live', icon='LINKED')
+
+    def _draw_overlay(self, layout, entry):
+        row = layout.row()
+        row.use_property_split = False
+        row.prop(entry, 'adjusting', toggle=True, icon='OBJECT_ORIGIN',
+                 text='Adjust in the View')
+        column = layout.column()
+        column.prop(entry, 'opacity', slider=True)
+        column.prop(entry, 'size', slider=True)
+        column.prop(entry, 'anchor')
+        column.prop(entry, 'offset', text='Offset')
+        column.prop(entry, 'flip_h')
+        column = layout.column(heading='Camera')
+        column.prop(entry, 'fit_camera')
+        column.prop(entry, 'only_camera')
+        column = layout.column(heading='Picture')
+        column.prop(entry, 'crop_to_mask')
+        column.prop(entry, 'include_markup')

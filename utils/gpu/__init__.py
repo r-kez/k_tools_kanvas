@@ -811,6 +811,12 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         draw_canvas_annotations(space, frame_number)
 
     prune_texture_cache()
+    if not export:
+        try:
+            from ..overlay_3d import notify_board_drawn
+            notify_board_drawn(settings)
+        except Exception as exc:
+            print(f"Kanvas: could not refresh the 3D overlays: {exc}")
 
 
 def _lock_extra(frame, text_h):

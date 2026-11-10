@@ -1,12 +1,20 @@
-"""Send Kanvas images to the 3D View as reference image empties, and manage them from
-the 3D View: update a reference after editing its image, select it, find its image on
-the board, remove it."""
+"""Send Kanvas images to the 3D View, as reference image empties or as live overlays
+drawn over the view, and manage them from the 3D View: update a reference after
+editing its image, select it, place an overlay, find its image on the board, remove
+it."""
 
 import bpy
 
 from .kanvas_context import KanvasTreeOnly
 from ..utils.kanvas_data import get_settings
+from ..utils import live_reference_3d as live
+from ..utils import overlay_3d
 from ..utils import reference_3d as ref
+
+KIND_ITEMS = (
+    ('EMPTY', 'Reference Image', 'An image empty in the scene, facing a view'),
+    ('OVERLAY', 'Overlay', 'The image drawn over the 3D View, live from the board'),
+)
 
 
 def _select_reference(self, context):
@@ -29,11 +37,30 @@ def _kanvas_tree_poll(self, tree):
     return tree.bl_idname == 'KanvasNodeTree'
 
 
+def _redraw_overlays(self, context):
+    overlay_3d.tag_3d_views()
+
+
+def _picture_changed(self, context):
+    """A new way of making the picture: a live reference follows it at once."""
+    if self.kind == 'EMPTY' and self.live:
+        live.sync_entry(self)
+    overlay_3d.tag_3d_views()
+
+
+def _adjust_one(self, context):
+    """Only one overlay is adjusted at a time: the gizmo follows it."""
+    if self.adjusting:
+        for entry in context.scene.kanvas_references:
+            if entry.adjusting and entry.as_pointer() != self.as_pointer():
+                entry.adjusting = False
+    overlay_3d.tag_3d_views()
+
+
 class KanvasReference(bpy.types.PropertyGroup):
     """A Kanvas image shown in the 3D View, and how its picture was made."""
-    kind: bpy.props.EnumProperty(  # type: ignore
-        items=(('EMPTY', 'Reference Image', 'An image empty in the scene'),),
-        default='EMPTY')
+    kind: bpy.props.EnumProperty(items=KIND_ITEMS, default='EMPTY')  # type: ignore
+    name: bpy.props.StringProperty()  # type: ignore  # the image's name when it was sent
     object: bpy.props.PointerProperty(type=bpy.types.Object)  # type: ignore
     board: bpy.props.PointerProperty(type=bpy.types.NodeTree, poll=_kanvas_tree_poll)  # type: ignore
     item_id: bpy.props.StringProperty()  # type: ignore
@@ -41,14 +68,52 @@ class KanvasReference(bpy.types.PropertyGroup):
     crop_to_mask: bpy.props.BoolProperty(  # type: ignore
         name='Crop to Mask',
         description='Only the part of the image its mask shows, without the hidden margin',
-        default=True)
+        default=True, update=_picture_changed)
     keep_stretch: bpy.props.BoolProperty(  # type: ignore
         name='Keep Stretch and Shear',
         description='Keep the stretch and shear the image has on the board',
-        default=False)
+        default=False, update=_picture_changed)
+    # A live reference is drawn by Kanvas from the board; otherwise it shows an image file.
+    # Off by default: references made before live ones existed are image files.
+    live: bpy.props.BoolProperty(default=False)  # type: ignore
     include_markup: bpy.props.BoolProperty(  # type: ignore
-        name='Color Markup', description='Paint the color markup of the image over it',
-        default=False)
+        name='Color Markup',
+        description=('Paint the color markup of the image over it (an overlay shows it while '
+                     'the markup is visible on the board)'),
+        default=False, update=_redraw_overlays)
+
+    # Overlays
+    show: bpy.props.BoolProperty(  # type: ignore
+        name='Show', description='Show this overlay', default=True, update=_redraw_overlays)
+    opacity: bpy.props.FloatProperty(  # type: ignore
+        name='Opacity', description='Opacity of the overlay', default=0.5, min=0.0, max=1.0,
+        subtype='FACTOR', update=_redraw_overlays)
+    size: bpy.props.FloatProperty(  # type: ignore
+        name='Size', description='Height of the overlay, as a share of the height of the view',
+        default=0.5, min=0.02, soft_max=1.5, max=10.0, subtype='FACTOR',
+        update=_redraw_overlays)
+    anchor: bpy.props.EnumProperty(  # type: ignore
+        name='Anchor', description='Where the overlay sits in the view, before the offset',
+        items=overlay_3d.ANCHOR_ITEMS, default='CENTER', update=_redraw_overlays)
+    offset: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Offset', description='Shift from the anchor, in pixels', size=2,
+        default=(0.0, 0.0), subtype='XYZ', update=_redraw_overlays)
+    flip_h: bpy.props.BoolProperty(  # type: ignore
+        name='Flip', description=('Mirror the overlay from left to right, to check proportions '
+                                  'with fresh eyes'),
+        default=False, update=_redraw_overlays)
+    fit_camera: bpy.props.BoolProperty(  # type: ignore
+        name='Fit to Camera',
+        description='When looking through the camera, fit the overlay inside the camera frame',
+        default=False, update=_redraw_overlays)
+    only_camera: bpy.props.BoolProperty(  # type: ignore
+        name='Only in Camera View', description='Show the overlay only when looking through the camera',
+        default=False, update=_redraw_overlays)
+    adjusting: bpy.props.BoolProperty(  # type: ignore
+        name='Adjust',
+        description=('Move the overlay by dragging it in the 3D View, and scale it by its top '
+                     'right corner. Turn off to click through it again'),
+        default=False, options={'SKIP_SAVE'}, update=_adjust_one)
 
 
 class KanvasReferenceTarget(bpy.types.PropertyGroup):
@@ -76,11 +141,34 @@ def _selected_images(settings):
 class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.add_3d_reference'
     bl_label = 'Send to 3D View'
-    bl_description = ('Add the selected images to the 3D View as reference images, as they '
-                      'look on the board and cropped to their mask, at the 3D cursor')
+    bl_description = ('Add the selected images to the 3D View, as they look on the board and '
+                      'cropped to their mask: as reference images at the 3D cursor, or as '
+                      'overlays drawn over the view')
     bl_options = {'REGISTER', 'UNDO'}
 
     targets: bpy.props.CollectionProperty(type=KanvasReferenceTarget)  # type: ignore
+    kind: bpy.props.EnumProperty(  # type: ignore
+        name='As', description='How the images go to the 3D View', items=KIND_ITEMS,
+        default='EMPTY')
+    live: bpy.props.BoolProperty(  # type: ignore
+        name='Live',
+        description=('Draw the reference from the board: edits in Kanvas show at once, with '
+                     'the colors of the board. Off, the picture is saved as an image file '
+                     'that works without Kanvas, updated with Update Reference'),
+        default=True)
+    overlay_opacity: bpy.props.FloatProperty(  # type: ignore
+        name='Opacity', description='Opacity of the overlay', default=0.5, min=0.0, max=1.0,
+        subtype='FACTOR')
+    overlay_size: bpy.props.FloatProperty(  # type: ignore
+        name='Size', description='Height of the overlay, as a share of the height of the view',
+        default=0.5, min=0.02, soft_max=1.5, max=10.0, subtype='FACTOR')
+    anchor: bpy.props.EnumProperty(  # type: ignore
+        name='Anchor', description='Where the overlay sits in the view',
+        items=overlay_3d.ANCHOR_ITEMS, default='CENTER')
+    fit_camera: bpy.props.BoolProperty(  # type: ignore
+        name='Fit to Camera',
+        description='When looking through the camera, fit the overlay inside the camera frame',
+        default=False)
     size: bpy.props.FloatProperty(  # type: ignore
         name='Size', description='Length of the longer side of the image in the scene',
         default=5.0, min=0.0001, soft_max=100.0, subtype='DISTANCE', unit='LENGTH')
@@ -125,16 +213,29 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
 
     def draw(self, context):
         layout = self.layout
+        layout.row().prop(self, 'kind', expand=True)
+        overlay = self.kind == 'OVERLAY'
         column = layout.column(align=True)
         for target in self.targets:
             row = column.row(align=True)
             if len(self.targets) > 1:
                 row.prop(target, 'use', text='')
             row.label(text=target.label, icon='IMAGE_DATA')
-            row.prop(target, 'view', text='')
+            if not overlay:
+                row.prop(target, 'view', text='')
         layout.separator()
         column = layout.column()
         column.use_property_split = True
+        if overlay:
+            column.prop(self, 'overlay_opacity', slider=True)
+            column.prop(self, 'overlay_size', slider=True)
+            column.prop(self, 'anchor')
+            column.prop(self, 'fit_camera')
+            column.separator()
+            column.prop(self, 'crop_to_mask')
+            column.prop(self, 'include_markup')
+            return
+        column.prop(self, 'live')
         column.prop(self, 'size')
         column.prop(self, 'depth')
         column.prop(self, 'opacity', slider=True)
@@ -154,6 +255,8 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
         if not targets:   # run again from Redo or a script: the selection
             targets = [(item.item_id, ref.BLUEPRINT_ORDER[i % len(ref.BLUEPRINT_ORDER)])
                        for i, item in enumerate(_selected_images(settings))]
+        if self.kind == 'OVERLAY':
+            return self._add_overlays(context, tree, [item_id for item_id, _ in targets])
         made, failed = [], []
         location = scene.cursor.location.copy()
         for item_id, view in targets:
@@ -161,8 +264,11 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
                            include_markup=self.include_markup)
             probe = _Options(item_id=item_id, **options)
             try:
-                item, picture = ref.make_picture(tree, probe)
-                image = ref.store_picture(picture, item)
+                if self.live:
+                    item, image = _live_placeholder(tree, probe)
+                else:
+                    item, picture = ref.make_picture(tree, probe)
+                    image = ref.store_picture(picture, item)
             except Exception as exc:
                 item = ref.board_item(tree, item_id)
                 failed.append(f'{item.name if item else item_id}: {exc}')
@@ -172,6 +278,7 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
                                    self.perspective)
             entry = scene.kanvas_references.add()
             entry.kind, entry.object, entry.board = 'EMPTY', obj, tree
+            entry.name, entry.live = item.name, self.live
             entry.item_id, entry.view = item_id, view
             entry.crop_to_mask = self.crop_to_mask
             entry.keep_stretch = self.keep_stretch
@@ -185,6 +292,115 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             return {'CANCELLED'}
         self.report({'INFO'}, f'Added {len(made)} reference image{"s" if len(made) > 1 else ""} '
                               f'to the 3D View')
+        return {'FINISHED'}
+
+
+    def _add_overlays(self, context, tree, item_ids):
+        scene = context.scene
+        added = 0
+        for item_id in item_ids:
+            item = ref.board_item(tree, item_id)
+            if item is None:
+                continue
+            entry = scene.kanvas_references.add()
+            entry.kind, entry.board, entry.item_id = 'OVERLAY', tree, item_id
+            entry.name = item.name or item.image_data.name
+            entry.opacity, entry.size = self.overlay_opacity, self.overlay_size
+            entry.anchor, entry.fit_camera = self.anchor, self.fit_camera
+            entry.crop_to_mask, entry.include_markup = self.crop_to_mask, self.include_markup
+            added += 1
+        if not added:
+            return {'CANCELLED'}
+        scene.kanvas_overlays_hidden = False
+        scene.kanvas_reference_index = len(scene.kanvas_references) - 1
+        overlay_3d.tag_3d_views()
+        self.report({'INFO'}, f'Added {added} overlay{"s" if added > 1 else ""} to the 3D View')
+        return {'FINISHED'}
+
+
+def _live_placeholder(tree, options):
+    """(item, placeholder image) for a new live reference."""
+    from ..utils.item_picture import is_picture_item, picture_quad
+    item = ref.board_item(tree, options.item_id)
+    if not is_picture_item(item):
+        raise ValueError('The image is no longer on its Kanvas board')
+    quad = picture_quad(item, options.crop_to_mask, options.keep_stretch)
+    if quad is None:
+        raise ValueError('The mask hides the whole image')
+    holder = _Holder()
+    return item, live.ensure_placeholder(holder, item.name or item.image_data.name,
+                                         live.quad_aspect(quad))
+
+
+class _Holder:
+    """Stands for the empty before it exists: `ensure_placeholder` sets its data."""
+    data = None
+
+
+def _drop_image(image):
+    """Remove an image Kanvas made for a reference once nothing uses it."""
+    if image is not None and (image.get('kanvas_reference') or live.is_placeholder(image)) \
+            and image.users == 0:
+        bpy.data.images.remove(image)
+
+
+class KANVAS_OT_BakeReference3D(bpy.types.Operator):
+    bl_idname = 'kanvas.bake_3d_reference'
+    bl_label = 'Save as Image File'
+    bl_description = ('Turn the live reference into an image file: it works without Kanvas '
+                      'and in other files, but no longer follows the board and shows with '
+                      'the view transform of the scene')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        entry = _entry(context, -1) if getattr(context, 'scene', None) else None
+        return (entry is not None and entry.kind == 'EMPTY' and entry.live
+                and ref.board_item(entry.board, entry.item_id) is not None)
+
+    def execute(self, context):
+        entry = _entry(context, -1)
+        obj = entry.object
+        try:
+            item, picture = ref.make_picture(entry.board, entry)
+            image = ref.store_picture(picture, item)
+        except Exception as exc:
+            self.report({'WARNING'}, f'Could not save {obj.name}: {exc}')
+            return {'CANCELLED'}
+        placeholder = obj.data
+        obj.data = image
+        entry.live = False
+        _drop_image(placeholder)
+        overlay_3d.tag_3d_views()
+        return {'FINISHED'}
+
+
+class KANVAS_OT_MakeReference3DLive(bpy.types.Operator):
+    bl_idname = 'kanvas.make_3d_reference_live'
+    bl_label = 'Make Live'
+    bl_description = ('Draw the reference from the board again: edits in Kanvas show at once, '
+                      'with the colors of the board')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        entry = _entry(context, -1) if getattr(context, 'scene', None) else None
+        return (entry is not None and entry.kind == 'EMPTY' and not entry.live
+                and ref.board_item(entry.board, entry.item_id) is not None)
+
+    def execute(self, context):
+        entry = _entry(context, -1)
+        obj = entry.object
+        try:
+            item, placeholder = _live_placeholder(entry.board, entry)
+        except Exception as exc:
+            self.report({'WARNING'}, f'Could not make {obj.name} live: {exc}')
+            return {'CANCELLED'}
+        baked = obj.data
+        obj.data = placeholder
+        entry.live = True
+        _drop_image(baked)
+        overlay_3d.tag_3d_views()
         return {'FINISHED'}
 
 
@@ -229,11 +445,13 @@ class KANVAS_OT_UpdateReference3D(_ReferenceOperator, bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         entry = _entry(context, -1) if getattr(context, 'scene', None) else None
-        return entry is not None and ref.board_item(entry.board, entry.item_id) is not None
+        # Overlays and live references are drawn from the board: nothing to update.
+        return (entry is not None and entry.kind == 'EMPTY' and not entry.live
+                and ref.board_item(entry.board, entry.item_id) is not None)
 
     def execute(self, context):
         entry = _entry(context, self.index)
-        if entry is None:
+        if entry is None or entry.kind != 'EMPTY' or entry.live:
             return {'CANCELLED'}
         obj = entry.object
         try:
@@ -255,13 +473,15 @@ class KANVAS_OT_UpdateAllReferences3D(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         scene = getattr(context, 'scene', None)
-        return scene is not None and any(not ref.is_deleted(e) for e in scene.kanvas_references)
+        return scene is not None and any(e.kind == 'EMPTY' and not e.live
+                                         and not ref.is_deleted(e)
+                                         for e in scene.kanvas_references)
 
     def execute(self, context):
         ref.prune(context.scene)
         updated, failed = 0, 0
         for entry in context.scene.kanvas_references:
-            if entry.kind != 'EMPTY':
+            if entry.kind != 'EMPTY' or entry.live:
                 continue
             try:
                 item, picture = ref.make_picture(entry.board, entry)
@@ -278,21 +498,23 @@ class KANVAS_OT_UpdateAllReferences3D(bpy.types.Operator):
 class KANVAS_OT_RemoveReference3D(_ReferenceOperator, bpy.types.Operator):
     bl_idname = 'kanvas.remove_3d_reference'
     bl_label = 'Remove Reference'
-    bl_description = ('Delete the reference image from the scene. The image stays on the '
-                      'Kanvas board')
+    bl_description = ('Delete the reference image from the scene, or the overlay from the '
+                      'view. The image stays on the Kanvas board')
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
         index = _entry_index(context, self.index)
         if index is None:
             return {'CANCELLED'}
-        obj = context.scene.kanvas_references[index].object
-        image = obj.data
+        entry = context.scene.kanvas_references[index]
+        obj = entry.object if entry.kind == 'EMPTY' else None
+        image = obj.data if obj is not None else None
         context.scene.kanvas_references.remove(index)
-        bpy.data.objects.remove(obj)
-        if image is not None and image.get('kanvas_reference') and image.users == 0:
-            bpy.data.images.remove(image)
+        if obj is not None:
+            bpy.data.objects.remove(obj)
+        _drop_image(image)
         ref.prune(context.scene)
+        overlay_3d.tag_3d_views()
         return {'FINISHED'}
 
 
@@ -349,8 +571,12 @@ def register():
     bpy.types.Scene.kanvas_references = bpy.props.CollectionProperty(type=KanvasReference)
     bpy.types.Scene.kanvas_reference_index = bpy.props.IntProperty(
         default=-1, update=_select_reference)
+    bpy.types.Scene.kanvas_overlays_hidden = bpy.props.BoolProperty(
+        name='Hide Overlays', description='Hide every Kanvas overlay of this scene for now',
+        default=False, update=_redraw_overlays)
 
 
 def unregister():
+    del bpy.types.Scene.kanvas_overlays_hidden
     del bpy.types.Scene.kanvas_reference_index
     del bpy.types.Scene.kanvas_references
