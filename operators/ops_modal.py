@@ -2346,6 +2346,12 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
         if shape_kind:
             _shape_armed_changed(area_key)
             context.workspace.status_text_set(None)
+            if shape_kind.startswith('MEASURE:'):
+                # A mark on an image: its own short drag, started by this press.
+                _, purpose, kind, item_id = shape_kind.split(':', 3)
+                bpy.ops.kanvas.draw_measure('INVOKE_DEFAULT', item_id=item_id, kind=kind,
+                                            purpose=purpose)
+                return {'CANCELLED'}
             self._start_shape_draw(context, settings, shape_kind, mouse)
             return self._begin_gesture(context)
 

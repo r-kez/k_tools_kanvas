@@ -33,6 +33,7 @@ This documentation is written for people who use Kanvas. It explains what each t
 | --- | --- |
 | [Image masks](masks.md) | Showing only part of an image |
 | [Color Markup](color-markup.md) | Named color regions, linking them to checklists, and keeping busy images readable |
+| [Measuring and real scale](measure.md) | Lines and rectangles on an image, a scale that gives them real sizes, and real-size references in the 3D View |
 | [Auto Select](auto-select.md) | Selecting a subject with one click (optional, downloaded on request) |
 
 ## Customizing and reference

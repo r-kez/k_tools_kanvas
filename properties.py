@@ -3,6 +3,7 @@ import math
 
 import bpy
 from .utils.kanvas_data import get_settings
+from .utils import measure as measure_units
 
 
 _frame_geometry_updates_suspended = 0
@@ -328,7 +329,9 @@ class KanvasPanelTabs(bpy.types.PropertyGroup):
             ('MAIN', 'Image', 'The image file, place, size and turn', 'IMAGE_DATA'),
             ('ADJUST', 'Adjust', 'Brightness, contrast, colors, values and opacity', 'MODIFIER'),
             ('MASK', 'Mask', 'Hide parts of the image', 'MOD_MASK'),
-            ('MARKUP', 'Color', 'Color Markup: paint named color regions on the image', 'BRUSH_DATA'))))
+            ('MARKUP', 'Color', 'Color Markup: paint named color regions on the image', 'BRUSH_DATA'),
+            ('MEASURE', 'Measure', 'Marks, and a scale that gives the image its real size',
+             'DRIVER_DISTANCE'))))
     shape: bpy.props.EnumProperty(  # type: ignore
         name='Shape Tab', items=_tab_items((
             ('MAIN', 'Shape', 'Kind, vertices, outline, place and size', 'MESH_PLANE'),
@@ -525,6 +528,48 @@ class KanvasChecklistAssociation(bpy.types.PropertyGroup):
     card_id: bpy.props.StringProperty(  # type: ignore
         name='Checklist', description='Checklist linked to this image', default='',
     )
+
+
+def update_measure(self, context):
+    """A mark or a scale changed: redraw the canvas and the 3D Views, and let the
+    references in the 3D View follow a new scale."""
+    try:
+        from .utils.overlay_3d import tag_3d_views
+        from .utils.live_reference_3d import schedule_sync
+        tag_3d_views()
+        schedule_sync()
+    except Exception as exc:
+        print(f'Kanvas: could not refresh the 3D references: {exc}')
+    if getattr(context, 'area', None):
+        context.area.tag_redraw()
+
+
+class KanvasMeasure(bpy.types.PropertyGroup):
+    """A mark on an image: a line or a rectangle, in image coordinates. One mark of an
+    image can be its scale (`KanvasImageItem.measure_scale_id`)."""
+    measure_id: bpy.props.StringProperty(default='')  # type: ignore
+    name: bpy.props.StringProperty(  # type: ignore
+        name='Name', description='What this mark measures', default='Line',
+        update=update_measure)
+    kind: bpy.props.EnumProperty(  # type: ignore
+        name='Kind', items=(('LINE', 'Line', 'Two points'),
+                            ('RECT', 'Rectangle', 'Two opposite corners')),
+        default='LINE')
+    p0: bpy.props.FloatVectorProperty(size=2, update=update_measure)  # type: ignore
+    p1: bpy.props.FloatVectorProperty(size=2, update=update_measure)  # type: ignore
+    visible: bpy.props.BoolProperty(  # type: ignore
+        name='Show', description='Show this mark on the canvas', default=True,
+        update=update_measure)
+    # Used only by the mark that is the scale of its image.
+    known_value: bpy.props.FloatProperty(  # type: ignore
+        name='Real Size', description='How big this mark really is',
+        default=1.0, min=0.0001, soft_max=10000.0, precision=3, update=update_measure)
+    known_unit: bpy.props.EnumProperty(  # type: ignore
+        name='Unit', description='Unit of the real size',
+        items=measure_units.UNIT_ITEMS, default='CM', update=update_measure)
+    known_side: bpy.props.EnumProperty(  # type: ignore
+        name='Side', description='Which size of the mark the real size is given for',
+        items=measure_units.SIDE_ITEMS, default='LENGTH', update=update_measure)
 
 
 def _tag_markup_changed(region, context):
@@ -1074,6 +1119,15 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         default=False,
     )
 
+    measures: bpy.props.CollectionProperty(type=KanvasMeasure)  # type: ignore
+    measure_active_index: bpy.props.IntProperty(default=0, min=0)  # type: ignore
+    measure_scale_id: bpy.props.StringProperty(  # type: ignore
+        default='', update=update_measure,
+        description='The mark whose real size gives this image its scale')
+    measure_visible: bpy.props.BoolProperty(  # type: ignore
+        name='Show Marks', description='Show this image\'s marks and their sizes on the canvas',
+        default=True, update=update_measure)
+
     location: bpy.props.FloatVectorProperty(  # type: ignore
         name='Location',
         description='Center position of this item on the Kanvas canvas',
@@ -1457,6 +1511,9 @@ class KanvasSettings(bpy.types.PropertyGroup):
         update=update_active_image,
     )
 
+    measure_unit: bpy.props.EnumProperty(  # type: ignore
+        name='Unit', description='Unit the marks of this board are read in',
+        items=measure_units.UNIT_ITEMS, default='CM', update=update_measure)
     show_debug_grid: bpy.props.BoolProperty(  # type: ignore
         name='Show Debug Grid',
         description='Show the canvas origin axes',

@@ -8,6 +8,7 @@ import bpy
 from .kanvas_context import KanvasTreeOnly
 from ..utils.kanvas_data import get_settings
 from ..utils import live_reference_3d as live
+from ..utils import measure as mm
 from ..utils import overlay_3d
 from ..utils import reference_3d as ref
 
@@ -43,8 +44,15 @@ def _redraw_overlays(self, context):
 
 def _picture_changed(self, context):
     """A new way of making the picture: a live reference follows it at once."""
-    if self.kind == 'EMPTY' and self.live:
-        live.sync_entry(self)
+    if self.kind == 'EMPTY' and (self.live or self.real_scale):
+        live.sync_entry(self, context.scene)
+    overlay_3d.tag_3d_views()
+
+
+def _real_scale_changed(self, context):
+    """Following the real size (or not): the Size is set from the image's scale at once."""
+    if self.kind == 'EMPTY' and self.real_scale:
+        live.sync_entry(self, context.scene)
     overlay_3d.tag_3d_views()
 
 
@@ -73,6 +81,12 @@ class KanvasReference(bpy.types.PropertyGroup):
         name='Keep Stretch and Shear',
         description='Keep the stretch and shear the image has on the board',
         default=False, update=_picture_changed)
+    real_scale: bpy.props.BoolProperty(  # type: ignore
+        name='Real Scale',
+        description=('Give the reference the size the image has in real life, from the scale '
+                     'set in Kanvas (Measure tab): the Size follows the scale and the mask. '
+                     'Needs a scale on the image'),
+        default=False, update=_real_scale_changed)
     # 0: made before references showed from every angle (Only Axis Aligned was on by
     # default and hid them as soon as the view turned): `migrate_references` fixes those.
     defaults_version: bpy.props.IntProperty(default=0)  # type: ignore
@@ -153,6 +167,12 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
     kind: bpy.props.EnumProperty(  # type: ignore
         name='As', description='How the images go to the 3D View', items=KIND_ITEMS,
         default='EMPTY')
+    real_scale: bpy.props.BoolProperty(  # type: ignore
+        name='Real Scale',
+        description=('Give each image the size it has in real life, from the scale set in '
+                     'Kanvas (Measure tab): the marked element comes out as big as you said. '
+                     'Images without a scale use Size'),
+        default=True)
     live: bpy.props.BoolProperty(  # type: ignore
         name='Live',
         description=('Draw the reference from the board: edits in Kanvas show at once, with '
@@ -207,6 +227,15 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
     def poll(cls, context):
         return KanvasTreeOnly.poll(context) and bool(_selected_images(get_settings(context)))
 
+    def _has_scale(self, context):
+        """Whether any image to send has a scale, so the size can come from real life."""
+        tree = getattr(context.space_data, 'edit_tree', None)
+        for target in self.targets:
+            item = ref.board_item(tree, target.item_id)
+            if item is not None and item.image_data and mm.is_calibrated(item):
+                return True
+        return False
+
     def invoke(self, context, event):
         self.targets.clear()
         for index, item in enumerate(_selected_images(get_settings(context))):
@@ -240,7 +269,12 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             column.prop(self, 'include_markup')
             return
         column.prop(self, 'live')
-        column.prop(self, 'size')
+        scaled = self._has_scale(context)
+        if scaled:
+            column.prop(self, 'real_scale')
+        sized = column.column()
+        sized.active = not (scaled and self.real_scale)
+        sized.prop(self, 'size')
         column.prop(self, 'depth')
         column.prop(self, 'opacity', slider=True)
         column.prop(self, 'axis_aligned')
@@ -277,9 +311,10 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
                 item = ref.board_item(tree, item_id)
                 failed.append(f'{item.name if item else item_id}: {exc}')
                 continue
+            real = (ref.real_size_scene(item, probe, scene) if self.real_scale else None)
             obj = ref.create_empty(context, image, item.name or image.name, view, location,
-                                   self.size, self.depth, self.opacity, self.axis_aligned,
-                                   self.perspective)
+                                   self.size if real is None else real, self.depth,
+                                   self.opacity, self.axis_aligned, self.perspective)
             entry = scene.kanvas_references.add()
             entry.kind, entry.object, entry.board = 'EMPTY', obj, tree
             entry.name, entry.live = item.name, self.live
@@ -288,6 +323,7 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             entry.crop_to_mask = self.crop_to_mask
             entry.keep_stretch = self.keep_stretch
             entry.include_markup = self.include_markup
+            entry.real_scale = real is not None     # last: it reads the options above
             made.append(obj.name)
         if made:
             scene.kanvas_reference_index = len(scene.kanvas_references) - 1
@@ -462,6 +498,7 @@ class KANVAS_OT_UpdateReference3D(_ReferenceOperator, bpy.types.Operator):
         try:
             item, picture = ref.make_picture(entry.board, entry)
             obj.data = ref.store_picture(picture, item, obj.data if obj.data else None)
+            live.sync_entry(entry, context.scene)
         except Exception as exc:
             self.report({'WARNING'}, f'Could not update {obj.name}: {exc}')
             return {'CANCELLED'}

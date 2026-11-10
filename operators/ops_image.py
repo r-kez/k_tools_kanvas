@@ -964,6 +964,20 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
                 for vertex in polygon.vertices:
                     copied_vertex = copied_polygon.vertices.add()
                     copied_vertex.uv = tuple(vertex.uv)
+            new_img.measure_visible = source.measure_visible
+            new_img.measure_scale_id = source.measure_scale_id
+            new_img.measure_active_index = source.measure_active_index
+            for mark in source.measures:
+                copied_mark = new_img.measures.add()
+                copied_mark.measure_id = mark.measure_id
+                copied_mark.name = mark.name
+                copied_mark.kind = mark.kind
+                copied_mark.p0 = tuple(mark.p0)
+                copied_mark.p1 = tuple(mark.p1)
+                copied_mark.visible = mark.visible
+                copied_mark.known_value = mark.known_value
+                copied_mark.known_unit = mark.known_unit
+                copied_mark.known_side = mark.known_side
             new_img.markup_visible = source.markup_visible
             new_img.markup_tool = source.markup_tool
             new_img.markup_brush_size = source.markup_brush_size

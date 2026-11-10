@@ -14,6 +14,8 @@ board changes something an overlay shows, the board's own redraw tags the 3D Vie
 
 import bpy
 
+from . import measure as measure_math
+
 ANCHOR_ITEMS = (
     ('CENTER', 'Center', 'In the middle of the view'),
     ('TOP_LEFT', 'Top Left', 'In the top left corner of the view'),
@@ -193,7 +195,7 @@ def _item_signature(item):
             item.brightness, item.contrast, item.saturation, tuple(item.color_tint),
             item.flip_h, item.flip_v, tuple(item.scale_xy), item.value_gray,
             item.value_levels, item.markup_visible, item.markup_revision,
-            item.use_color_correction, tuple(item.shear_xy))
+            item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item))
 
 
 def notify_board_drawn(settings):
@@ -204,9 +206,10 @@ def notify_board_drawn(settings):
     scene = getattr(bpy.context, 'scene', None)
     if scene is None or not hasattr(scene, 'kanvas_references'):
         return
-    from .live_reference_3d import live_entries, schedule_sync
+    from .live_reference_3d import live_entries, schedule_sync, synced_entries
     entries = [] if scene.kanvas_overlays_hidden else [e for e in overlays(scene) if e.show]
-    live = live_entries(scene)
+    live = synced_entries(scene)
+    entries += [entry for entry in live_entries(scene) if entry not in live]
     entries += live
     if not entries:
         _last_signature = None

@@ -190,6 +190,21 @@ def create_empty(context, image, name, view, location, size, depth, opacity,
     return obj
 
 
+def real_size_scene(item, options, scene):
+    """Size, in Blender units of `scene`, that makes a picture of `item` as big as it is
+    in real life, from the scale of the image: the longer side of the picture, which is
+    what an image empty's Size is. None when the image has no scale or the mask hides
+    everything. `options` has `crop_to_mask` and `keep_stretch`."""
+    from . import measure
+    from .item_picture import picture_quad
+    quad = picture_quad(item, options.crop_to_mask, options.keep_stretch)
+    if quad is None:
+        return None
+    x0, y0, x1, y1 = quad[2]
+    meters = measure.real_size_meters(item, max(x1 - x0, y1 - y0))
+    return None if meters is None else measure.scene_units(meters, scene)
+
+
 def migrate_references():
     """References made before they showed from every angle have Only Axis Aligned on,
     which hides them as soon as the 3D View orbits (perspective included). Turn it off

@@ -26,6 +26,7 @@ With several images selected as reference images, each one gets the next view of
 | --- | --- | --- |
 | **Live** | On | Kanvas draws the reference from the board, so edits show at once. Off, the picture is saved as an image file instead (see [Live or image file](#live-or-image-file)) |
 | **View** | Front, Right, ... | Which view the reference faces: **Front**, **Back**, **Right**, **Left**, **Top**, **Bottom**, or **Current View** (the angle of the 3D View now) |
+| **Real Scale** | On | Shown for images that have a [scale](measure.md#scale). The reference gets the size the image has in real life, so the element you marked comes out as big as you said. **Size** is then not used |
 | **Size** | 5 m | Length of the longer side of the image in the scene |
 | **Type** | Reference | **Reference** is hidden behind objects in front of it, **Background** is drawn behind everything, **In Front** over everything |
 | **Opacity** | 1 | Below 1, the reference lets the scene show through |
@@ -60,7 +61,7 @@ The **Kanvas** tab of the 3D View sidebar (`N`) lists the references of the scen
 - **Show in Kanvas** (the magnifier) selects the image on its board and frames it in an open Kanvas editor.
 - **Remove Reference** (the trash button) deletes the reference from the scene, or the overlay from the view. The image stays on the board.
 - **Settings**, closed at first, has the options of the active row:
-  - For a reference image: its size, opacity, depth and visibility, how its picture is made (**Crop to Mask**, **Stretch and Shear**, **Color Markup**), and **Save as Image File** or **Make Live**. A live reference follows these at once; one saved as a file needs **Update Reference**.
+  - For a reference image: its size (or **Real Scale**), opacity, depth and visibility, how its picture is made (**Crop to Mask**, **Stretch and Shear**, **Color Markup**), and **Save as Image File** or **Make Live**. A live reference follows these at once; one saved as a file needs **Update Reference**.
   - For an overlay: **Adjust in the View**, opacity, size, anchor, offset, **Flip**, **Fit to Camera**, **Only in Camera View**, **Crop to Mask** and **Color Markup**.
 
 A row whose image was deleted from the board is marked **Not on the board**. A reference image keeps working in the scene but can no longer be updated; an overlay stops showing until you remove it.

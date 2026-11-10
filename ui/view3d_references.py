@@ -3,6 +3,7 @@ controls of the active reference."""
 
 import bpy
 
+from ..utils import measure as mm
 from ..utils import reference_3d as ref
 
 
@@ -114,8 +115,16 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
             self._draw_overlay(layout, entry)
             return
         obj = entry.object
+        item = ref.board_item(entry.board, entry.item_id)
+        scaled = item is not None and bool(item.image_data) and mm.is_calibrated(item)
         column = layout.column()
-        column.prop(obj, 'empty_display_size', text='Size')
+        size = column.row()
+        size.active = not (entry.real_scale and scaled)
+        size.prop(obj, 'empty_display_size', text='Size')
+        real = column.row()
+        real.enabled = scaled or entry.real_scale
+        real.prop(entry, 'real_scale',
+                  text='Real Scale' if scaled else 'Real Scale (the image has no scale)')
         row = column.row(heading='Opacity')
         row.prop(obj, 'use_empty_image_alpha', text='')
         sub = row.row()

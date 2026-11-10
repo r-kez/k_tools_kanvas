@@ -749,6 +749,11 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         draw_group_outlines(settings, view_pixel_size)
     except Exception as exc:
         print(f"Kanvas groups: {exc}")
+    try:
+        from .gpu_measure import draw_marks
+        draw_marks(settings, view_pixel_size, view_bounds)
+    except Exception as exc:
+        print(f"Kanvas marks: {exc}")
 
     draw_checklist_links(settings, view_pixel_size, region)
     draw_arrows(settings, view_pixel_size)
@@ -888,6 +893,12 @@ def draw_board_labels(settings, region, area=None, export=False):
         draw_group_labels(settings, region)
     except Exception as exc:
         print(f"Kanvas group names: {exc}")
+    if not export:
+        try:
+            from .gpu_measure import draw_mark_labels
+            draw_mark_labels(settings, region)
+        except Exception as exc:
+            print(f"Kanvas mark sizes: {exc}")
     ordered_frames = visible_frames_in_draw_order(settings)
     frame_depth = {frame.frame_node_name: depth for depth, (_, frame) in enumerate(ordered_frames)}
     for _, frame in ordered_frames:

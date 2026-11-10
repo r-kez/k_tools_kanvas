@@ -125,6 +125,15 @@ def live_entries(scene):
             and entry.object.users_collection]
 
 
+def synced_entries(scene):
+    """The reference images Kanvas keeps in step with the board: live ones (their
+    placeholder follows the picture's proportions) and those that follow the real size
+    of the image."""
+    return [entry for entry in getattr(scene, 'kanvas_references', ())
+            if entry.kind == 'EMPTY' and (entry.live or entry.real_scale)
+            and entry.object is not None and entry.object.users_collection]
+
+
 # --- Drawing -----------------------------------------------------------------------------
 
 def _far_projection(projection):
@@ -193,28 +202,34 @@ def draw_references():
 
 # --- Keeping placeholders in proportion ------------------------------------------------------
 
-def sync_entry(entry):
-    """Resize an entry's placeholder to the proportions of its picture. Not from a draw
-    function."""
+def sync_entry(entry, scene=None):
+    """Bring a reference in step with its image: a live one's placeholder takes the
+    proportions of the picture, and one that follows the real size takes the Size the
+    scale of the image gives. Not from a draw function."""
     from .item_picture import is_picture_item
-    from .reference_3d import board_item
-    if not entry.live or entry.object is None:
+    from .reference_3d import board_item, real_size_scene
+    if entry.object is None or not (entry.live or entry.real_scale):
         return
     item = board_item(entry.board, entry.item_id)
     if not is_picture_item(item):
         return
-    quad = _quad(item, entry)
-    if quad is not None:
-        ensure_placeholder(entry.object, entry.name or item.name, quad_aspect(quad))
+    if entry.live:
+        quad = _quad(item, entry)
+        if quad is not None:
+            ensure_placeholder(entry.object, entry.name or item.name, quad_aspect(quad))
+    if entry.real_scale:
+        size = real_size_scene(item, entry, scene or bpy.context.scene)
+        if size is not None and abs(entry.object.empty_display_size - size) > 1e-9:
+            entry.object.empty_display_size = size
 
 
 def _sync_all():
     global _sync_scheduled
     _sync_scheduled = False
     for scene in bpy.data.scenes:
-        for entry in live_entries(scene):
+        for entry in synced_entries(scene):
             try:
-                sync_entry(entry)
+                sync_entry(entry, scene)
             except Exception as exc:
                 print(f'Kanvas: could not resize a live reference: {exc}')
     return None

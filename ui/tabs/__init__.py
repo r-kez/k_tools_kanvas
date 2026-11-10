@@ -14,7 +14,8 @@ from importlib import import_module
 # kind -> {tab identifier: module name in this package}
 TABS = {
     'image': {'MAIN': 'image_main', 'ADJUST': 'image_adjust',
-              'MASK': 'image_mask', 'MARKUP': 'image_markup'},
+              'MASK': 'image_mask', 'MARKUP': 'image_markup',
+              'MEASURE': 'image_measure'},
     'shape': {'MAIN': 'shape_main', 'FILL': 'shape_fill',
               'LINE': 'shape_line', 'TEXT': 'shape_text'},
     'text': {'CARD': 'text_card', 'CONTENT': 'text_content'},

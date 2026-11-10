@@ -47,6 +47,13 @@ def _icon_lines(kind, cx, cy, r):
                       cy + math.sin(start + i * math.tau / count) * r)
                      for i in range(count)])
 
+    if isinstance(kind, str) and kind.startswith('MEASURE:'):
+        if kind.split(':')[2] == 'RECT':
+            return ring([(cx - r * 1.2, cy - r * 0.85), (cx + r * 1.2, cy - r * 0.85),
+                         (cx + r * 1.2, cy + r * 0.85), (cx - r * 1.2, cy + r * 0.85)])
+        return [(cx - r * 1.2, cy - r * 0.7), (cx + r * 1.2, cy + r * 0.7),
+                (cx - r * 1.2, cy - r * 0.7 - r * 0.5), (cx - r * 1.2, cy - r * 0.7 + r * 0.5),
+                (cx + r * 1.2, cy + r * 0.7 - r * 0.5), (cx + r * 1.2, cy + r * 0.7 + r * 0.5)]
     if kind == 'RECTANGLE':
         return ring([(cx - r * 1.2, cy - r * 0.85), (cx + r * 1.2, cy - r * 0.85),
                      (cx + r * 1.2, cy + r * 0.85), (cx - r * 1.2, cy + r * 0.85)])
