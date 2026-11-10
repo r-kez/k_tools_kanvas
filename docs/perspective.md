@@ -13,11 +13,13 @@ Nothing of the image is lost. The corners are stored on the item, the file is un
 
 **Show Original** brings the photo back, in the same place. **Reset** puts the corners back inside the image.
 
+**Show Whole Image** shows all of the photo straightened, not only the rectangle. What lies beyond the photo is clear, and the rectangle stays where it was. The picture is kept within two rectangles of the rectangle, since the parts of a photo near its horizon would otherwise stretch to infinity.
+
 While **Edit Corners** is on, and while you edit the mask or the color markup, the image shows as it is in the photo, since that is where the mask and the markup are painted. When you finish, the straightened image comes back. Closing the Perspective tab also ends the edit.
 
 ## Proportions
 
-A straight rectangle needs to know how wide it is compared to its height. **Auto** estimates it from the corners, assuming the photo was taken with a normal camera aimed at the middle of the image (no crop, no shift lens): in that case the estimate is exact. Turn **Auto** off to type the proportions yourself (for example 1.414 for an A4 sheet, or the measures of a door). Turning it off keeps the estimated number, so nothing jumps.
+A straight rectangle needs to know how wide it is compared to its height. Before you straighten, the tab shows an estimate made from the corners, assuming the photo was taken with a normal camera aimed at the middle of the image (no crop, no shift lens): in that case it is exact. **Straighten** keeps that number. After that, moving a corner leaves the proportions alone, so the image does not stretch as you refine the corners. Type another number for the proportions yourself (for example 1.414 for an A4 sheet, or the measures of a door), or press the dropper to estimate them again from the corners as they are now.
 
 ## What follows the correction
 

@@ -83,8 +83,9 @@ def _visible_uv(item, crop_to_mask):
     finding the crop reads the whole mask."""
     from .item_crop import corrected, stored_crop
     from .item_picture import picture_uv_rect
-    if corrected(item) is not None:
-        return 0.0, 0.0, 1.0, 1.0           # the rectangle, in its own coordinates
+    rectangle = corrected(item)
+    if rectangle is not None:
+        return rectangle.bounds             # in the coordinates of the straightened plane
     if not (crop_to_mask and item.mask_enabled):
         return stored_crop(item)
     key = (item.id_data.as_pointer(), item.item_id)
@@ -113,9 +114,9 @@ def shown_part(item, entry):
         quad = quad_from_uv(item, uv, True)
         x0, y0, x1, y1 = quad[2]
         return uv, (x1 - x0) / max(1e-6, y1 - y0), quad
-    from .item_crop import box_size
-    width, height = box_size(item, *item.image_data.size) if corrected(item) is not None \
-        else item.image_data.size
+    rectangle = corrected(item)
+    width, height = ((rectangle.width, rectangle.height) if rectangle is not None
+                     else item.image_data.size)
     aspect = ((u1 - u0) * width) / max(1e-6, (v1 - v0) * height)
     mirror_x, mirror_y = _mirrored(item)
     if mirror_x != bool(entry.flip_h):
@@ -246,7 +247,8 @@ def _item_signature(item):
             len(item.markup_regions),
             item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item),
             item.crop_enabled, tuple(item.crop_uv), item.persp_enabled,
-            tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing)
+            tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing,
+            item.persp_whole)
 
 
 def notify_board_drawn(settings):

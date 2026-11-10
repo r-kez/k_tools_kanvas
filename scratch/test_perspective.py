@@ -199,6 +199,95 @@ try:
     item.persp_editing = True
     item.persp_enabled = True
     image_perspective.draw(Layout(), bpy.context, settings, item)
+    # --- Show Whole Image: the whole photo straightened, the rectangle in place ---------------------------
+    item.persp_enabled = False
+    item.persp_auto = False
+    item.persp_aspect = 1.5
+    item.location = (300.0, 100.0)
+    item.rotation, item.scale_master = 20.0, 0.5
+    item.persp_corners = (0.1, 0.1, 0.9, 0.2, 0.8, 0.9, 0.2, 0.7)
+    assert p.set_straightened(item, True)
+    rect_box = c.corrected(item)
+    middle = image_point_from_uv(item, p.apply(rect_box.forward, (0.5, 0.5)))
+    rect_size = c.box_size(item, 1000, 800)
+    assert p.set_whole(item, True) and item.persp_whole
+    whole = c.corrected(item)
+    u0, v0, u1, v1 = whole.bounds
+    assert u0 <= 0 and v0 <= 0 and u1 >= 1 and v1 >= 1 and (u1 - u0) * (v1 - v0) > 1.2, whole.bounds
+    size = c.box_size(item, 1000, 800)
+    assert size[0] > rect_size[0] and size[1] > rect_size[1]
+    assert close(image_point_from_uv(item, p.apply(whole.forward, (0.5, 0.5))), middle, 1e-3),         'the rectangle stays where it was'
+    assert c.pivot_uv(item) == whole.pivot
+    # The corners of the photo are inside the box (edges included), the outside is not.
+    for photo_corner in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)):
+        assert image_uv_at(item, image_point_from_uv(item, photo_corner)) is not None, photo_corner
+    far = image_point_from_uv(item, p.apply(whole.forward, (u1 + 0.5, v1 + 0.5)))
+    assert image_uv_at(item, far) is None
+    for flip_h, flip_v in ((False, False), (True, False), (False, True), (True, True)):
+        item.flip_h, item.flip_v = flip_h, flip_v
+        for uv in ((0.1, 0.1), (0.9, 0.9), (0.5, 0.5), (0.02, 0.97)):
+            point = image_point_from_uv(item, uv)
+            back = image_uv_at(item, point)
+            assert back is not None and math.dist(uv, back) < 1e-5, (flip_h, flip_v, uv, back)
+            assert close(mm.canvas_to_uv(item, point), uv, 1e-5)
+    item.flip_h = item.flip_v = False
+    assert ip.picture_uv_rect(item, True) == whole.bounds
+    shown = ip.picture_size(item)
+    assert abs(shown[0] - size[0]) <= 2 and abs(shown[1] - size[1]) <= 2
+    assert p.set_whole(item, False) and c.box_size(item, 1000, 800) == rect_size
+    assert close(image_point_from_uv(item, p.apply(c.corrected(item).forward, (0.5, 0.5))), middle, 1e-3)
+    # A corner past the horizon is held within reach.
+    far_quad = (0.1, 0.1, 0.9, 0.1, 0.55, 0.9, 0.45, 0.9)
+    item.persp_corners = far_quad
+    item.persp_whole = True
+    bounds = c.corrected(item).bounds
+    assert all(-p.WHOLE_REACH - 1e-9 <= v <= 1 + p.WHOLE_REACH + 1e-9 for v in bounds), bounds
+    item.persp_whole = False
+
+    # --- Straightening keeps the proportions it estimated; Estimate asks again ------------------------------
+    item.persp_enabled = False
+    item.persp_corners = (0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75)
+    item.persp_auto = True
+    assert p.set_straightened(item, True)
+    assert not item.persp_auto and abs(item.persp_aspect - 1.5) < 1e-6
+    item.persp_corners = (0.2, 0.25, 0.8, 0.25, 0.8, 0.9, 0.2, 0.9)
+    assert abs(item.persp_aspect - 1.5) < 1e-6, 'moving a corner leaves the proportions'
+    p.fix_proportions(item)
+    assert abs(item.persp_aspect - 600 / 520) < 1e-6
+    p.set_straightened(item, False)
+
+    # --- The tab bar breaks into two lines ----------------------------------------------------------------------
+    from k_tools_kanvas.ui.tabs import draw_tab_bar
+    rows = []
+
+    class Row:
+        def prop_enum(self, data, name, value, text='', icon=''):
+            rows[-1].append(value)
+
+        def prop(self, *args, **kwargs):
+            rows[-1].append('all')
+
+    class Column:
+        def __init__(self):
+            self.scale_y = 1.0
+
+        def row(self, align=False):
+            rows.append([])
+            return Row()
+
+    class TabLayout:
+        def column(self, align=False):
+            return Column()
+
+        def row(self, align=False):
+            rows.append([])
+            return Row()
+
+    draw_tab_bar(TabLayout(), bpy.context, 'image')
+    assert [len(r) for r in rows] == [3, 3] and rows[0][0] == 'MAIN' and rows[1][-1] == 'PERSPECTIVE', rows
+    rows.clear()
+    draw_tab_bar(TabLayout(), bpy.context, 'shape')
+    assert rows == [['all']], 'four tabs stay on one line'
     print('test_perspective: OK')
 finally:
     addon.unregister()

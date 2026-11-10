@@ -25,6 +25,9 @@ TABS = {
 # name stays in the tooltip.
 ICON_ONLY_WIDTH = 220
 
+# More tabs than this are drawn on two lines.
+MAX_TABS_PER_ROW = 5
+
 
 def tab_kind(item):
     """Which tab set an item uses, or None for items drawn without tabs."""
@@ -49,9 +52,21 @@ def draw_tab_bar(layout, context, kind):
     scale = getattr(getattr(context, 'preferences', None), 'view', None)
     scale = getattr(scale, 'ui_scale', 1.0) or 1.0
     narrow = region is not None and region.width / scale < ICON_ONLY_WIDTH
-    row = layout.row(align=True)
-    row.scale_y = 1.2
-    row.prop(tabs, kind, expand=True, icon_only=narrow)
+    items = list(tabs.bl_rna.properties[kind].enum_items)
+    if len(items) <= MAX_TABS_PER_ROW:
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        row.prop(tabs, kind, expand=True, icon_only=narrow)
+        return
+    # Too many for one line: two lines of the same number of tabs.
+    per_row = -(-len(items) // 2)
+    column = layout.column(align=True)
+    column.scale_y = 1.2
+    for start in range(0, len(items), per_row):
+        row = column.row(align=True)
+        for entry in items[start:start + per_row]:
+            row.prop_enum(tabs, kind, entry.identifier, text=' ' if narrow else entry.name,
+                          icon=entry.icon)
 
 
 def draw_tabbed(layout, context, settings, item):

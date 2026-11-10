@@ -947,9 +947,7 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
             new_img.crop_uv = tuple(source.crop_uv)
             new_img.crop_enabled = source.crop_enabled
             new_img.crop_follow_mask = source.crop_follow_mask
-            new_img.persp_corners = tuple(source.persp_corners)
-            new_img.persp_auto, new_img.persp_aspect = source.persp_auto, source.persp_aspect
-            new_img.persp_enabled = source.persp_enabled
+            new_img.persp_whole = source.persp_whole
             new_img.persp_corners = tuple(source.persp_corners)
             new_img.persp_auto, new_img.persp_aspect = source.persp_auto, source.persp_aspect
             new_img.persp_enabled = source.persp_enabled

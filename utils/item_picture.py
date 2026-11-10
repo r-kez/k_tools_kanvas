@@ -80,9 +80,10 @@ def uv_to_image(item, u, v):
     from .item_crop import corrected, stored_crop
     rectangle = corrected(item)
     if rectangle is not None:
+        from . import perspective
         mirror_x, mirror_y = _mirrored(item)
-        return (((1.0 - u if mirror_x else u) - 0.5) * rectangle.width,
-                ((1.0 - v if mirror_y else v) - 0.5) * rectangle.height)
+        u, v = perspective.mirrored(rectangle, (u, v), mirror_x, mirror_y)
+        return (u - rectangle.pivot[0]) * rectangle.width, (v - rectangle.pivot[1]) * rectangle.height
     width, height = item.image_data.size
     u0, v0, u1, v1 = stored_crop(item)
     mirror_x, mirror_y = _mirrored(item)
@@ -130,8 +131,9 @@ def picture_uv_rect(item, crop_to_mask=True):
     straightened rectangle, in the coordinates of the rectangle: the mask is not measured
     there, it still hides what it hides when drawn."""
     from .item_crop import corrected, stored_crop
-    if corrected(item) is not None:
-        return 0.0, 0.0, 1.0, 1.0
+    rectangle = corrected(item)
+    if rectangle is not None:
+        return rectangle.bounds
     base = stored_crop(item)
     if not crop_to_mask:
         return base

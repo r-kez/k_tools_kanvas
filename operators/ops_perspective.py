@@ -52,6 +52,37 @@ class KANVAS_OT_PerspectiveStraighten(_ImageOperator, bpy.types.Operator):
         return {'FINISHED'}
 
 
+class KANVAS_OT_PerspectiveWhole(_ImageOperator, bpy.types.Operator):
+    bl_idname = 'kanvas.perspective_whole'
+    bl_label = 'Show Whole Image'
+    bl_description = ('Show all of the photo straightened, not only the rectangle. What lies '
+                      'beyond the photo is clear, and the rectangle stays where it was')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        item = _active_image(context)
+        persp.set_whole(item, not item.persp_whole)
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class KANVAS_OT_PerspectiveEstimate(_ImageOperator, bpy.types.Operator):
+    bl_idname = 'kanvas.perspective_estimate'
+    bl_label = 'Estimate Proportions'
+    bl_description = ('Work out the proportions of the rectangle from the corners as they are now. '
+                      'Moving a corner afterwards leaves them as they are')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        item = _active_image(context)
+        if persp.estimated_ratio(item) is None:
+            self.report({'WARNING'}, 'The corners do not make a rectangle')
+            return {'CANCELLED'}
+        persp.fix_proportions(item)
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class KANVAS_OT_PerspectiveReset(_ImageOperator, bpy.types.Operator):
     bl_idname = 'kanvas.perspective_reset'
     bl_label = 'Reset Corners'
@@ -63,6 +94,7 @@ class KANVAS_OT_PerspectiveReset(_ImageOperator, bpy.types.Operator):
         persp.set_straightened(item, False)
         item.persp_corners = DEFAULT_CORNERS
         item.persp_auto = True
+        item.persp_whole = False
         context.area.tag_redraw()
         return {'FINISHED'}
 

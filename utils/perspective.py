@@ -23,7 +23,13 @@ from collections import namedtuple
 MIN_AREA = 1e-5        # a quadrilateral smaller than this share of the image is no rectangle
 MIN_SIDE_PIXELS = 2.0
 
-Corrected = namedtuple('Corrected', 'forward inverse width height')
+# `width` x `height` is the size in pixels of the unit square of the rectangle; `bounds`
+# (u0, v0, u1, v1) is the part of the plane the item shows, in the rectangle's coordinates
+# (the unit square, or with Show Whole Image the whole photo straightened); `pivot` is the
+# middle of `bounds`, the point that sits at the item's location.
+Corrected = namedtuple('Corrected', 'forward inverse width height bounds pivot')
+
+WHOLE_REACH = 2.0       # how many rectangles beyond the rectangle the whole image may reach
 
 
 # --- Homographies ----------------------------------------------------------------------------
@@ -153,7 +159,34 @@ def corrected_size(quad, width, height, ratio):
     return across, across / ratio
 
 
-def build(quad, width, height, ratio=None):
+def whole_bounds(forward, inverse):
+    """The part of the plane the whole photo covers once straightened, in the rectangle's
+    coordinates: the box around the four corners of the photo, kept within WHOLE_REACH
+    rectangles of the rectangle (a corner past the horizon of the picture would reach
+    infinity). It always holds the rectangle."""
+    reference = apply_w(inverse, apply(forward, (0.5, 0.5)))
+    points, clipped = [(0.0, 0.0), (1.0, 1.0)], False
+    for uv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)):
+        w = apply_w(inverse, uv)
+        if w * reference <= 1e-6:
+            clipped = True
+            continue
+        points.append(apply(inverse, uv))
+    low, high = -WHOLE_REACH, 1.0 + WHOLE_REACH
+    if clipped:
+        return low, low, high, high
+    clamp = lambda value: min(high, max(low, value))
+    return (clamp(min(p[0] for p in points)), clamp(min(p[1] for p in points)),
+            clamp(max(p[0] for p in points)), clamp(max(p[1] for p in points)))
+
+
+def apply_w(matrix, point):
+    """The w a 3 x 3 matrix gives a point: its sign says on which side of the horizon the
+    point is."""
+    return matrix[6] * point[0] + matrix[7] * point[1] + matrix[8]
+
+
+def build(quad, width, height, ratio=None, whole=False):
     """Everything the item needs from its corners: `forward` (the rectangle's unit square
     to the image's UV), `inverse`, and the size of the rectangle in pixels. `ratio` is the
     width / height wanted, estimated from the corners when None. None when the corners are
@@ -169,7 +202,9 @@ def build(quad, width, height, ratio=None):
     if forward is None or inverse is None:
         return None
     box_width, box_height = corrected_size(quad, width, height, ratio)
-    return Corrected(forward, inverse, box_width, box_height)
+    bounds = whole_bounds(forward, inverse) if whole else (0.0, 0.0, 1.0, 1.0)
+    return Corrected(forward, inverse, box_width, box_height, bounds,
+                     ((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5))
 
 
 # --- The item ------------------------------------------------------------------------------------
@@ -239,35 +274,69 @@ def hit_editable(settings, window_manager, point, pixel_size):
     return None if corner is None else (item.item_id, corner)
 
 
+def _rectangle_middle(item):
+    """Where the middle of the rectangle is on the canvas now, whichever way the image is
+    shown (None when the corners are no good)."""
+    from .arrow_geometry import image_point_from_uv
+    built = build_for(item)
+    if built is None:
+        return None
+    return image_point_from_uv(item, apply(built.forward, (0.5, 0.5)))
+
+
+def _keep_rectangle_in_place(item, change):
+    """Run `change` (which alters how the item is shown) and move the item's location so
+    the middle of the rectangle stays where it was on the canvas."""
+    import bpy
+    from ..properties import suspend_frame_geometry_updates, update_frame_geometry
+    before = _rectangle_middle(item)
+    with suspend_frame_geometry_updates():
+        change()
+        after = _rectangle_middle(item)
+        if before is not None and after is not None:
+            item.location = (item.location[0] + before[0] - after[0],
+                             item.location[1] + before[1] - after[1])
+    update_frame_geometry(item, bpy.context)
+
+
 def set_straightened(item, on):
     """Show the image straightened (or as it is in the photo) without moving the middle of
     the rectangle: the item's location follows. Returns False when it cannot be done (the
     corners are no good, or the image is cropped)."""
-    import bpy
-    from .arrow_geometry import image_point_from_uv
     if bool(on) == bool(item.persp_enabled):
         item.persp_editing = False
         return True
-    built = build_for(item)
-    if on and (built is None or item.crop_enabled):
+    if on and (build_for(item) is None or item.crop_enabled):
         return False
-    from ..properties import suspend_frame_geometry_updates, update_frame_geometry
-    middle = apply(built.forward, (0.5, 0.5)) if built is not None else (0.5, 0.5)
-    here = tuple(item.location)
-    with suspend_frame_geometry_updates():
-        if on:
-            item.persp_editing = False
-            point = image_point_from_uv(item, middle)        # where the middle is in the photo
-            item.persp_enabled = True
-            if point is not None:
-                item.location = point
-        else:
-            item.persp_enabled = False
-            item.persp_editing = False
-            point = image_point_from_uv(item, middle)        # where it lands, location unchanged
-            if point is not None:
-                item.location = (2 * here[0] - point[0], 2 * here[1] - point[1])
-    update_frame_geometry(item, bpy.context)
+    if on and item.persp_auto:
+        fix_proportions(item)
+
+    def change():
+        item.persp_editing = False
+        item.persp_enabled = bool(on)
+    _keep_rectangle_in_place(item, change)
+    return True
+
+
+def fix_proportions(item):
+    """Keep the proportions the corners give now as the typed ones. From here on moving a
+    corner leaves them alone (a hand-placed corner would otherwise change the estimate a
+    little at every edit, and the image would stretch); **Estimate** asks for a new one."""
+    ratio = estimated_ratio(item)
+    if ratio is not None:
+        item.persp_aspect = max(0.05, min(20.0, ratio))
+    item.persp_auto = False
+
+
+def set_whole(item, on):
+    """Show the whole photo straightened, not only the rectangle (or only the rectangle),
+    keeping the rectangle in place."""
+    if bool(on) == bool(item.persp_whole):
+        return True
+
+    def change():
+        item.persp_whole = bool(on)
+    _keep_rectangle_in_place(item, change)
     return True
 
 
@@ -302,12 +371,12 @@ def build_for(item):
     if image is None or image.size[0] <= 0 or image.size[1] <= 0:
         return None
     key = (tuple(item.persp_corners), image.size[0], image.size[1],
-           bool(item.persp_auto), float(item.persp_aspect))
+           bool(item.persp_auto), float(item.persp_aspect), bool(item.persp_whole))
     pointer = (item.id_data.as_pointer(), item.item_id)
     cached = _cache.get(pointer)
     if cached is None or cached[0] != key:
         built = build(corner_points(item), key[1], key[2],
-                      None if item.persp_auto else float(item.persp_aspect))
+                      None if item.persp_auto else float(item.persp_aspect), key[5])
         cached = (key, built)
         _cache[pointer] = cached
     return cached[1]
@@ -315,6 +384,20 @@ def build_for(item):
 
 def forget(item):
     _cache.pop((item.id_data.as_pointer(), item.item_id), None)
+
+
+def box_size(corrected):
+    """(width, height) in pixels of what the item shows: the rectangle, or the whole photo
+    straightened."""
+    u0, v0, u1, v1 = corrected.bounds
+    return corrected.width * (u1 - u0), corrected.height * (v1 - v0)
+
+
+def mirrored(corrected, point, flip_h, flip_v):
+    """A point of the plane mirrored across the middle of the box, as a flip does."""
+    u0, v0, u1, v1 = corrected.bounds
+    return (u0 + u1 - point[0] if flip_h else point[0],
+            v0 + v1 - point[1] if flip_v else point[1])
 
 
 def rect_to_uv(corrected, point):

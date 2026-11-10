@@ -30,16 +30,19 @@ def draw(layout, context, settings, item):
                     text='Show Original' if item.persp_enabled else 'Straighten',
                     icon='LOOP_BACK' if item.persp_enabled else 'MOD_LATTICE',
                     depress=item.persp_enabled)
+    column.operator('kanvas.perspective_whole', text='Show Whole Image', icon='IMAGE_PLANE',
+                    depress=item.persp_whole)
     if perspective.build_for(item) is None:
         column.label(text='The corners do not make a rectangle', icon='ERROR')
     gap(layout)
 
     column = layout.column(align=True)
     column.label(text='Proportions')
-    row = column.row(align=True)
-    row.prop(item, 'persp_auto', text='Auto', toggle=True)
     if item.persp_auto:
         ratio = perspective.estimated_ratio(item)
-        row.label(text='' if ratio is None else f'{ratio:.3f}  (width / height)')
+        column.label(text='' if ratio is None else f'{ratio:.3f}  (width / height), estimated')
+        column.label(text='It is kept when you Straighten')
     else:
+        row = column.row(align=True)
         row.prop(item, 'persp_aspect', text='Width / Height')
+        row.operator('kanvas.perspective_estimate', text='', icon='EYEDROPPER')

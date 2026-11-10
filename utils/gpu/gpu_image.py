@@ -252,7 +252,7 @@ class KanvasTexture:
         geom_key = (self.texture.width, self.texture.height, tuple(location),
                     tuple(scale), tuple(shear), rotation, flip_h, flip_v,
                     id(shader), tuple(shown), tuple(pivot),
-                    None if warp is None else (warp.width, warp.height))
+                    None if warp is None else (warp.width, warp.height, warp.bounds, warp.forward))
         batch = self._quad_batch
         if batch is None or self._quad_batch_key != geom_key:
             u0, v0, u1, v1 = shown
@@ -260,10 +260,12 @@ class KanvasTexture:
             if warp is not None:
                 # The straightened rectangle around its middle; the quad carries the
                 # coordinates of the rectangle, mirrored by a flip.
-                tex_coords = [(1.0 - fu if flip_h else fu, 1.0 - fv if flip_v else fv)
-                              for fu, fv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))]
-                pts = [((fu - 0.5) * warp.width * scale[0], (fv - 0.5) * warp.height * scale[1])
-                       for fu, fv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))]
+                b0, b1, b2, b3 = warp.bounds
+                box = ((b0, b1), (b2, b1), (b2, b3), (b0, b3))
+                tex_coords = [(b0 + b2 - fu if flip_h else fu, b1 + b3 - fv if flip_v else fv)
+                              for fu, fv in box]
+                pts = [((fu - warp.pivot[0]) * warp.width * scale[0],
+                        (fv - warp.pivot[1]) * warp.height * scale[1]) for fu, fv in box]
             else:
                 # Corners from the bottom left of the canvas; a flip mirrors the part in place.
                 left, right = (u1, u0) if flip_h else (u0, u1)

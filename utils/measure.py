@@ -223,9 +223,10 @@ def canvas_to_uv(item, point):
     rectangle = corrected(item)
     if rectangle is not None:
         from . import perspective
-        r_u, r_v = x / rectangle.width + 0.5, y / rectangle.height + 0.5
-        return perspective.rect_to_uv(rectangle, (1.0 - r_u if mirror_x else r_u,
-                                                  1.0 - r_v if mirror_y else r_v))
+        r_u = x / rectangle.width + rectangle.pivot[0]
+        r_v = y / rectangle.height + rectangle.pivot[1]
+        return perspective.rect_to_uv(
+            rectangle, perspective.mirrored(rectangle, (r_u, r_v), mirror_x, mirror_y))
     width, height = pixel_size(item)
     u0, v0, u1, v1 = stored_crop(item)
     u, v = x / width + (u0 + u1) * 0.5, y / height + (v0 + v1) * 0.5

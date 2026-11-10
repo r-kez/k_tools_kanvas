@@ -105,9 +105,12 @@ def setup():
         bpy.ops.kanvas.focus_selection()
     bpy.context.window_manager.kanvas_tabs.image = 'PERSPECTIVE'
     item.persp_editing = True
-    for region in kanvas.regions:
-        if region.type == 'UI':
-            pass
+    for ui_region in kanvas.regions:
+        if ui_region.type == 'UI':
+            try:
+                ui_region.active_panel_category = 'K-Tools'
+            except Exception as exc:
+                print('CATEGORY', exc)
 
 
 def step_editing():
@@ -127,7 +130,31 @@ def step_straight():
     shot('2_straightened')
 
 
-STEPS = [setup, step_editing, step_straighten, step_straight]
+def step_edit_again():
+    photo().persp_editing = True
+    with override():
+        bpy.ops.kanvas.focus_selection()
+
+
+def step_edit_shot():
+    shot('3_editing_again')
+    c = list(photo().persp_corners)
+    c[0] += 0.02
+    c[1] -= 0.01
+    c[4] -= 0.015
+    photo().persp_corners = c
+    photo().persp_editing = False
+    with override():
+        bpy.ops.kanvas.focus_selection()
+    from k_tools_kanvas.utils import perspective as p
+    print('RATIO', p.ratio_of(photo()), 'ENABLED', photo().persp_enabled, tuple(photo().scale_xy), photo().scale_master)
+
+
+def step_after():
+    shot('4_after_edit')
+
+
+STEPS = [setup, step_editing, step_straighten, step_straight, step_edit_again, step_edit_shot, step_after]
 
 
 def tick():

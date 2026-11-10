@@ -121,6 +121,58 @@ def run():
     check(abs(got[0] - want[0]) < 8 and abs(got[1] - want[1]) < 8, f'picture sample {got} {want}')
     photo().mask_enabled = True
 
+    # Editing the corners of a straightened image and leaving the edit: the picture is the
+    # rectangle of the new corners, not a stretched one.
+    photo().mask_enabled = False
+    photo().persp_auto = True
+    wm = bpy.context.window_manager
+    wm.kanvas_tabs.image = 'PERSPECTIVE'
+    photo().persp_editing = True
+    check(c.corrected(photo()) is None, 'the photo shows while editing')
+    photo().persp_corners = (0.2, 0.15, 0.8, 0.2, 0.75, 0.85, 0.22, 0.8)
+    photo().persp_editing = False
+    box = c.corrected(photo())
+    rect, after = board()
+    print('DBG box', box.width, box.height, 'picture', after.shape, 'ratio', p.ratio_of(photo()), 'bounds', rect, 'scale', tuple(photo().scale_xy), photo().scale_master)
+    check(abs(after.shape[1] - box.width) <= 2 and abs(after.shape[0] - box.height) <= 2,
+          f'picture {after.shape} is the new rectangle {box.width:.1f} x {box.height:.1f}')
+    worst = 0
+    for fu, fv in ((0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.5, 0.5)):
+        got = sample(after, rect, (rect[0] + fu * (rect[2] - rect[0]), rect[1] + fv * (rect[3] - rect[1])))
+        u, v = p.apply(box.forward, (fu, fv))
+        want = sample(plain, plain_rect, (plain_rect[0] + u * 200, plain_rect[1] + v * 200))
+        worst = max(worst, abs(got[0] - want[0]), abs(got[1] - want[1]))
+    check(worst < 6, f'the new corners are read right (worst {worst})')
+    wm.kanvas_tabs.image = 'MAIN'
+
+    # Show Whole Image: all of the photo straightened, clear where there is no photo.
+    photo().persp_auto = False
+    photo().persp_aspect = 1.0
+    photo().persp_corners = (0.15, 0.2, 0.85, 0.1, 0.75, 0.9, 0.25, 0.8)
+    p.set_whole(photo(), True)
+    whole = c.corrected(photo())
+    rect, everything = board()
+    w, h = c.box_size(photo(), 200, 200)
+    check(abs(everything.shape[1] - w) <= 2 and abs(everything.shape[0] - h) <= 2,
+          f'whole picture {everything.shape} {w:.1f} x {h:.1f}')
+    u0, v0, u1, v1 = whole.bounds
+
+    def at_plane(picture, fu, fv):
+        return sample(picture, rect, (rect[0] + (fu - u0) / (u1 - u0) * (rect[2] - rect[0]),
+                                      rect[1] + (fv - v0) / (v1 - v0) * (rect[3] - rect[1])))
+
+    worst = 0
+    for fu, fv in ((0.2, 0.2), (0.8, 0.8), (0.5, 0.5)):
+        got = at_plane(everything, fu, fv)
+        u, v = p.apply(whole.forward, (fu, fv))
+        want = sample(plain, plain_rect, (plain_rect[0] + u * 200, plain_rect[1] + v * 200))
+        worst = max(worst, abs(got[0] - want[0]), abs(got[1] - want[1]))
+    check(worst < 6, f'the whole picture reads the same homography (worst {worst})')
+    clear = [at_plane(everything, fu, fv)[3] for fu, fv in ((u0 + 0.01, v1 - 0.01), (u1 - 0.01, v0 + 0.01),
+                                                            (u0 + 0.01, v0 + 0.01), (u1 - 0.01, v1 - 0.01))]
+    check(min(clear) < 10, f'a corner of the box is clear beyond the photo {clear}')
+    p.set_whole(photo(), False)
+
     # Show Original gives the photo back where it was.
     photo().mask_enabled = False
     check(p.set_straightened(photo(), False), 'back to the photo')

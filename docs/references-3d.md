@@ -28,7 +28,7 @@ With several images selected as reference images, each one gets the next view of
 | **View** | Front, Right, ... | Which view the reference faces: **Front**, **Back**, **Right**, **Left**, **Top**, **Bottom**, or **Current View** (the angle of the 3D View now) |
 | **Real Scale** | On | Shown for images that have a [scale](measure.md#scale). The reference gets the size the image has in real life, so the element you marked comes out as big as you said. **Size** is then not used |
 | **Size** | 5 m | Length of the longer side of the image in the scene |
-| **Type** | Reference | **Reference** is hidden behind objects in front of it, **Background** is drawn behind everything, **In Front** over everything |
+| **Type** | Reference | **Reference** is hidden behind objects in front of it (in X-ray the part behind them shows through, as faintly as the objects are solid), **Background** is drawn behind everything, **In Front** over everything |
 | **Opacity** | 1 | Below 1, the reference lets the scene show through |
 | **Only Axis Aligned** | Off | The reference shows only when you look straight along its axis (for example, a Front reference only in the front view), as in a blueprint. It then hides as soon as you orbit, in perspective too. Off, as with Blender's own reference images, it shows from every angle. Not used with **Current View** |
 | **Show in Perspective** | On | Also show the reference in perspective views, not only orthographic ones |

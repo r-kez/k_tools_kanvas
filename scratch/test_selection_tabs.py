@@ -88,8 +88,8 @@ try:
             for tab in tabs.TABS[kind]:
                 setattr(wm.kanvas_tabs, kind, tab)
                 drawn = show(item_id)
-                bars = [c for c in drawn if c[0] == 'prop' and c[1][1:2] == (kind,)]
-                assert bars and bars[0][2].get('expand'), (item_id, tab, 'no tab bar')
+                bars = [c for c in drawn if c[0] in ('prop', 'prop_enum') and c[1][1:2] == (kind,)]
+                assert bars and (bars[0][2].get('expand') or bars[0][0] == 'prop_enum'),                     (item_id, tab, 'no tab bar')
                 assert len(drawn) > 4, (item_id, tab, len(drawn))
         for item_id in ('compare', 'frame'):
             drawn = show(item_id)
@@ -131,9 +131,14 @@ try:
         calls.clear()
         context = SimpleNamespace(window_manager=wm, region=SimpleNamespace(width=width),
                                   preferences=bpy.context.preferences)
-        tabs.draw_tab_bar(Layout(), context, 'image')
+        tabs.draw_tab_bar(Layout(), context, 'shape')
         bar = next(c for c in calls if c[0] == 'prop')
         assert bar[2]['icon_only'] is icon_only, (width, bar)
+        # The image tabs are too many for one line: each is drawn alone, icon only when narrow.
+        calls.clear()
+        tabs.draw_tab_bar(Layout(), context, 'image')
+        entries = [c for c in calls if c[0] == 'prop_enum']
+        assert len(entries) == 6 and all((c[2]['text'] == ' ') is icon_only for c in entries), (width, entries)
     print('test_selection_tabs: OK')
 finally:
     addon.unregister()

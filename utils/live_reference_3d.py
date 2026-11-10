@@ -64,7 +64,8 @@ def _quad(item, entry):
              len(item.mask_polygons), item.flip_h, item.flip_v, tuple(item.scale_xy),
              tuple(item.shear_xy), tuple(item.image_data.size), entry.crop_to_mask,
              entry.keep_stretch, item.crop_enabled, tuple(item.crop_uv), item.persp_enabled,
-             tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing)
+             tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing,
+             item.persp_whole)
     cached = _quad_cache.get(key)
     if cached is None or cached[0] != state:
         cached = (state, picture_quad(item, entry.crop_to_mask, entry.keep_stretch))
@@ -147,6 +148,17 @@ def _far_projection(projection):
     return Matrix(rows)
 
 
+def xray_alpha(space):
+    """How solid the meshes are in this 3D View while X-ray is on (0 clear, 1 solid), None
+    when it is off. Wireframe has its own switch and its own alpha."""
+    shading = getattr(space, 'shading', None)
+    if shading is None:
+        return None
+    if shading.type == 'WIREFRAME':
+        return shading.xray_alpha_wireframe if shading.show_xray_wireframe else None
+    return shading.xray_alpha if shading.show_xray else None
+
+
 def draw_references():
     """Draw the live references, after the scene: Default ones tested against the
     scene's depth, In Front ones over it, Background ones at the far plane."""
@@ -182,22 +194,29 @@ def draw_references():
                 markup = markup_texture_for_item(item, force=True)
             value_mode, value_levels = value_view_uniforms(item)
             opacity = obj.color[3] if obj.use_empty_image_alpha else 1.0
-            depth = 'NONE' if obj.empty_image_depth == 'FRONT' else 'LESS_EQUAL'
-            gpu.state.depth_test_set(depth)
+            front = obj.empty_image_depth == 'FRONT'
+            # Pass 1: what no mesh covers (all of it, for In Front). In X-ray a second pass
+            # shows the part behind meshes through them, as faintly as the meshes are solid.
+            passes = [('NONE' if front else 'LESS_EQUAL', opacity)]
+            see_through = xray_alpha(space)
+            if see_through is not None and not front:
+                passes.append(('GREATER', opacity * (1.0 - see_through)))
             gpu.state.depth_mask_set(False)
-            with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
-                if obj.empty_image_depth == 'BACK':
-                    gpu.matrix.load_projection_matrix(
-                        _far_projection(gpu.matrix.get_projection_matrix()))
-                gpu.matrix.multiply_matrix(obj.matrix_world)
-                get_kanvas_texture(item.image_data).draw_quad(
-                    plane_corners(obj, quad), quad[1], opacity=opacity,
-                    color_tint=item.color_tint, brightness=item.brightness,
-                    contrast=item.contrast, saturation=item.saturation,
-                    use_color_correction=False,   # the 3D View encodes to sRGB itself
-                    mask_texture=mask, markup_texture=markup,
-                    value_mode=value_mode, value_levels=value_levels,
-                    nearest=item.sampling == 'NEAREST', warp=corrected(item))
+            for depth, pass_opacity in passes:
+                gpu.state.depth_test_set(depth)
+                with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
+                    if obj.empty_image_depth == 'BACK':
+                        gpu.matrix.load_projection_matrix(
+                            _far_projection(gpu.matrix.get_projection_matrix()))
+                    gpu.matrix.multiply_matrix(obj.matrix_world)
+                    get_kanvas_texture(item.image_data).draw_quad(
+                        plane_corners(obj, quad), quad[1], opacity=pass_opacity,
+                        color_tint=item.color_tint, brightness=item.brightness,
+                        contrast=item.contrast, saturation=item.saturation,
+                        use_color_correction=False,   # the 3D View encodes to sRGB itself
+                        mask_texture=mask, markup_texture=markup,
+                        value_mode=value_mode, value_levels=value_levels,
+                        nearest=item.sampling == 'NEAREST', warp=corrected(item))
             gpu.state.depth_test_set('NONE')
         except Exception as exc:   # one broken reference must not stop the 3D View
             print(f'Kanvas: could not draw a live reference: {exc}')
