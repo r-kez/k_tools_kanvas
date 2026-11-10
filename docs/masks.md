@@ -17,6 +17,12 @@ While you edit:
 
 The **Mask** checkbox in the panel header shows or hides the mask. **Clear Image Mask** (the trash button) removes every mark from that image.
 
+## Mask resolution
+
+**Mask Resolution** in **Preferences > General > Memory Optimization** sets how sharp mask edges are on the canvas. The default, **Image**, follows the size of the image itself, up to 4096 pixels on the longer side. **4096**, **2048**, **1024** and **512** cap it: lower values use less video memory, and edges get softer on large images.
+
+While you paint, Kanvas shows a lighter preview (up to 1024 pixels) so strokes stay responsive. When you finish editing, the mask is rebuilt at the full resolution, which can take a moment on large images.
+
 ## Tools
 
 Switch tools with `Tab`, or press `B` (Brush), `P` (Polygon), or `A` (Auto Select, once an image is analyzed). The panel has a button for each tool too.

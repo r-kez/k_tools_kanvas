@@ -23,6 +23,7 @@ See [Images](images.md) for how these work together.
 | **Max Resolution** | 1080p | Longest edge of new images: 720p, 1080p, 2K, or Original (No Limit). Shown when Optimization is on |
 | **Force 8-bit Depth** | On | Converts HDR and float sources to 8 bits. Shown when Optimization is on |
 | **Texture Memory Budget (MB)** | 2048 | How much estimated GPU memory Kanvas may keep loaded. Above it, the least recently used images are released |
+| **Mask Resolution** | Image | Resolution of image masks on the canvas: the image's own size (up to 4096), 4096, 2048, 1024 or 512 pixels on the longer side. Higher keeps mask edges sharp on large images. See [Masks](masks.md#mask-resolution) |
 
 ### Shapes
 

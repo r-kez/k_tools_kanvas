@@ -16,10 +16,41 @@ def _apply_coverage(pixels, coverage, erase):
         np.maximum(pixels, coverage, out=pixels)
 
 
-def mask_dimensions(image):
+ANALYSIS_SIZE = 512      # masks read on the CPU: color names, checklist arrows, Auto Select
+PREVIEW_SIZE = 1024      # the mask shown while it is being painted
+MAX_DISPLAY_SIZE = 4096
+
+
+def _fit(image, side):
     width, height = max(1, image.size[0]), max(1, image.size[1])
-    scale = min(1.0, 512.0 / max(width, height))
+    scale = min(1.0, side / max(width, height))
     return max(1, round(width * scale)), max(1, round(height * scale))
+
+
+def mask_dimensions(image):
+    """Size of the masks the add-on reads on the CPU (and of color markup for now):
+    512 on the longer side, which is plenty for finding islands and picking."""
+    return _fit(image, ANALYSIS_SIZE)
+
+
+def display_side(image):
+    """Longer side of the mask texture drawn on the canvas, from the Mask Resolution
+    preference ('IMAGE': the image itself, up to MAX_DISPLAY_SIZE)."""
+    from .gpu_common import get_prefs
+    prefs = get_prefs()
+    choice = getattr(prefs, 'mask_resolution', 'IMAGE') if prefs else 'IMAGE'
+    if choice == 'IMAGE':
+        return min(MAX_DISPLAY_SIZE, max(1, image.size[0], image.size[1]))
+    return int(choice)
+
+
+def display_dimensions(item):
+    """Size of an item's mask texture: the preference, or the lighter preview while
+    the mask is being painted (it is rebuilt at full size when you leave)."""
+    side = display_side(item.image_data)
+    if getattr(item, 'mask_editing', False):
+        side = min(side, PREVIEW_SIZE)
+    return _fit(item.image_data, side)
 
 
 def _rasterize_polygon(polygon, pixels, width, height):
@@ -122,7 +153,7 @@ def mask_texture_for_item(item):
     if not item.image_data:
         return None
     key = (item.id_data.as_pointer(), item.item_id)
-    width, height = mask_dimensions(item.image_data)
+    width, height = display_dimensions(item)
     signature = (item.mask_revision, len(item.mask_dabs),
                  len(item.mask_polygons), width, height)
     cached = _mask_cache.get(key)
@@ -132,28 +163,26 @@ def mask_texture_for_item(item):
     same_size = cached and cached['signature'][3:] == (width, height)
     if same_size:
         old_revision, old_count, old_polygon_count = cached['signature'][:3]
+        # New dabs are the newest marks, above every polygon already there, so they
+        # can be painted over the old pixels as long as no polygon changed.
         append_only = (len(item.mask_dabs) > old_count
-                       and not item.mask_polygons and not old_polygon_count
+                       and len(item.mask_polygons) == old_polygon_count
                        and item.mask_revision - old_revision == len(item.mask_dabs) - old_count)
         pixels = rasterize_mask(item.mask_dabs, width, height,
                                 cached['pixels'] if append_only else None,
                                 old_count if append_only else 0,
                                 polygons=() if append_only else item.mask_polygons)
-        rgba = cached['rgba']
     else:
         pixels = rasterize_mask(item.mask_dabs, width, height,
                                 polygons=item.mask_polygons)
-        rgba = np.empty((height, width, 4), dtype=np.float32)
-        rgba[:, :, 3] = 1.0
-    rgba[:, :, :3] = pixels[:, :, None]
-    # A plain GPU texture, not a bpy image: Blender would flag an image like
-    # that as unsaved and ask about it on every save / quit.
+    # One channel (the shader reads .r): 1 byte a pixel instead of 16. A plain GPU
+    # texture, not a bpy image: Blender would flag an image like that as unsaved and
+    # ask about it on every save / quit.
     texture = gpu.types.GPUTexture(
-        (width, height), format='RGBA32F',
-        data=gpu.types.Buffer('FLOAT', width * height * 4, rgba.ravel()))
+        (width, height), format='R8',
+        data=gpu.types.Buffer('FLOAT', width * height, pixels.ravel()))
     texture.filter_mode(True)
-    _mask_cache[key] = {'signature': signature,
-                        'texture': texture, 'pixels': pixels, 'rgba': rgba}
+    _mask_cache[key] = {'signature': signature, 'texture': texture, 'pixels': pixels}
     return texture
 
 

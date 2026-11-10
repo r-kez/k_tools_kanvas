@@ -31,6 +31,8 @@ These settings apply to **new** imports. Use **Reload Image Source** to re-impor
 
 As a guide, an image whose longest edge is 1080 pixels typically uses about 3 to 4 MB of video memory, and larger images use proportionally more. The budget is an estimate, so set it comfortably below the video memory of your graphics card, leaving room for Blender itself.
 
+Image masks have their own texture. **Mask Resolution**, in the same box, sets its size: at the default (**Image**) a mask on a 4096 × 4096 image uses about 16 MB of video memory, and at **1024** about 1 MB. See [Masks](masks.md#mask-resolution).
+
 Blender also has its own **Preferences > Viewport > Textures > Limit Size**, which reduces texture resolution everywhere, including in Kanvas.
 
 ## Tips for large boards

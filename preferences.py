@@ -27,6 +27,13 @@ def _update_shape_fill(self, context):
     _update_axis_appearance(self, context)
 
 
+def _update_mask_resolution(self, context):
+    """A new mask resolution: every mask texture is rebuilt on the next redraw."""
+    from .utils.gpu.gpu_mask import clear_mask_cache
+    clear_mask_cache()
+    _update_axis_appearance(self, context)
+
+
 class KANVAS_OT_prefs_select_dir(bpy.types.Operator):
     bl_idname = "kanvas.prefs_select_dir"
     bl_label = "Select Directory"
@@ -70,6 +77,23 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         name="Assets Folder",
         description="Folder where reference images will be stored relative to the .blend file",
         default="//assets/kanvas"
+    )
+
+    mask_resolution: bpy.props.EnumProperty(  # type: ignore
+        name="Mask Resolution",
+        description=("Resolution of image masks on the canvas. Higher keeps the edges of "
+                     "masks sharp on large images, at the cost of memory and a short "
+                     "rebuild when you leave the mask editor. While you paint, a lighter "
+                     "preview is shown"),
+        items=[
+            ('IMAGE', "Image", "The size of the image itself, up to 4096 pixels"),
+            ('4096', "4096", "Up to 4096 pixels on the longer side"),
+            ('2048', "2048", "Up to 2048 pixels on the longer side"),
+            ('1024', "1024", "Up to 1024 pixels on the longer side"),
+            ('512', "512", "Up to 512 pixels on the longer side: lightest, softest edges"),
+        ],
+        default='IMAGE',
+        update=_update_mask_resolution,
     )
 
     shape_fill: bpy.props.EnumProperty(  # type: ignore
@@ -470,6 +494,7 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         box.label(text="Memory Optimization", icon='MEMORY')
         box.prop(self, "use_optimization")
         box.prop(self, "texture_budget_mb")
+        box.prop(self, "mask_resolution")
 
         col.separator()
         box = col.box()

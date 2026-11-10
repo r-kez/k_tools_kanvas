@@ -218,7 +218,7 @@ def markup_texture_for_item(item):
     # A plain GPU texture, not a bpy image: Blender would flag an image like
     # that as unsaved and ask about it on every save / quit.
     texture = gpu.types.GPUTexture(
-        (width, height), format='RGBA32F',
+        (width, height), format='RGBA8',   # 8 bits a channel is plenty for paint
         data=gpu.types.Buffer('FLOAT', width * height * 4, rgba.ravel()))
     texture.filter_mode(True)
     _markup_cache[key] = {'signature': signature, 'size': (width, height),
