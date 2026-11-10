@@ -14,6 +14,7 @@ gigabytes as floats).
 import math
 import struct
 import zlib
+from contextlib import contextmanager
 
 TILE = 4096
 MAX_SIDE = 16384
@@ -45,13 +46,18 @@ def _pad(box, amount):
     return box[0] - amount, box[1] - amount, box[2] + amount, box[3] + amount
 
 
-def item_rect(settings, items):
+def item_rect(settings, items, crop_to_mask=False):
     """Canvas rectangle around items (frames include what they hold). A shape's line
-    reaches past its outline, so its width is added."""
+    reaches past its outline, so its width is added. With `crop_to_mask`, a masked
+    image counts only for what its mask leaves visible."""
     from .item_geometry import item_bounds
     boxes = []
     for item in items:
-        box = item_bounds(item)
+        if crop_to_mask and item.item_type == 'IMAGE' and item.mask_enabled and item.image_data:
+            from .item_picture import visible_canvas_bounds
+            box = visible_canvas_bounds(item)
+        else:
+            box = item_bounds(item)
         if not box:
             continue
         if item.item_type == 'SHAPE' and item.shape_show_outline:
@@ -105,10 +111,10 @@ def selection_contents(settings):
     return list(kept.values()), arrows
 
 
-def board_rect(settings, scope, only_selected=True):
+def board_rect(settings, scope, only_selected=True, crop_to_mask=False):
     """Canvas rectangle of 'SELECTION' (what `selection_contents` keeps, or with
     `only_selected` off, the selected items and arrows) or 'ALL' (every visible item
-    and arrow). None when there is nothing."""
+    and arrow). None when there is nothing. `crop_to_mask`: see `item_rect`."""
     visible = [item for item in settings.images if item.show_in_editor]
     if scope == 'SELECTION' and only_selected:
         items, arrows = selection_contents(settings)
@@ -117,7 +123,7 @@ def board_rect(settings, scope, only_selected=True):
         arrows = [arrow for arrow in settings.arrows if arrow.is_selected]
     else:
         items, arrows = visible, list(settings.arrows)
-    return union(item_rect(settings, items), arrow_rect(settings, arrows))
+    return union(item_rect(settings, items, crop_to_mask), arrow_rect(settings, arrows))
 
 
 def output_size(rect, scale, margin):
@@ -136,15 +142,16 @@ def tiles(width, height, tile=TILE):
 
 # --- Rendering -------------------------------------------------------------------------
 
-def _render_tile(settings, space, frame_number, left, bottom, pixel_size, width, height,
-                 background):
-    """RGBA bytes (premultiplied, bottom row first) of one tile."""
+def _render_tile(settings, space, frame_number, view_bounds, pixel_size, width, height,
+                 background, projection, model=None, labels=True):
+    """RGBA bytes (premultiplied, bottom row first) of one tile. `projection` maps the
+    tile to clip space; `model` (identity by default) maps the canvas into the space
+    `projection` reads. Labels are drawn in region pixels, so only without a model."""
     import gpu
     from mathutils import Matrix
     from . import gpu as kanvas_gpu
     from .gpu.gpu_common import begin_draw_pass, end_draw_pass
-    region = _Region(width, height, _View2D(left, bottom, pixel_size))
-    view_bounds = (left, bottom, left + width * pixel_size, bottom + height * pixel_size)
+    region = _Region(width, height, _View2D(view_bounds[0], view_bounds[1], pixel_size))
     offscreen = gpu.types.GPUOffScreen(width, height, format='RGBA8')
     try:
         with offscreen.bind():
@@ -153,20 +160,17 @@ def _render_tile(settings, space, frame_number, left, bottom, pixel_size, width,
             begin_draw_pass()
             try:
                 with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
-                    gpu.matrix.load_matrix(Matrix.Identity(4))
-                    w, h = width * pixel_size, height * pixel_size
-                    gpu.matrix.load_projection_matrix(Matrix((
-                        (2.0 / w, 0, 0, -1 - 2.0 * left / w),
-                        (0, 2.0 / h, 0, -1 - 2.0 * bottom / h),
-                        (0, 0, 1, 0), (0, 0, 0, 1))))
+                    gpu.matrix.load_matrix(model if model is not None else Matrix.Identity(4))
+                    gpu.matrix.load_projection_matrix(projection)
                     kanvas_gpu.draw_board(settings, view_bounds, pixel_size, region,
                                           space=space, frame_number=frame_number, export=True)
-                with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
-                    gpu.matrix.load_matrix(Matrix.Identity(4))
-                    gpu.matrix.load_projection_matrix(Matrix((
-                        (2.0 / width, 0, 0, -1), (0, 2.0 / height, 0, -1),
-                        (0, 0, 1, 0), (0, 0, 0, 1))))
-                    kanvas_gpu.draw_board_labels(settings, region, export=True)
+                if labels:
+                    with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
+                        gpu.matrix.load_matrix(Matrix.Identity(4))
+                        gpu.matrix.load_projection_matrix(Matrix((
+                            (2.0 / width, 0, 0, -1), (0, 2.0 / height, 0, -1),
+                            (0, 0, 1, 0), (0, 0, 0, 1))))
+                        kanvas_gpu.draw_board_labels(settings, region, export=True)
             finally:
                 end_draw_pass()
             buffer = framebuffer.read_color(0, 0, width, height, 4, 0, 'UBYTE')
@@ -176,26 +180,17 @@ def _render_tile(settings, space, frame_number, left, bottom, pixel_size, width,
         offscreen.free()
 
 
-def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), space=None,
-           frame_number=0, only=None):
-    """The picture of `rect` as a NumPy array (height, width, 4) of uint8, straight
-    alpha, top row first, ready for PNG. `only` is (items, arrows) to draw alone (see
-    `selection_contents`); the other items are hidden while drawing and come back."""
-    import numpy as np
-    from ..properties import suspend_selection_updates
-    width, height = output_size(rect, scale, margin)
-    if max(width, height) > MAX_SIDE:
-        raise ValueError(f'{width} x {height} px is larger than {MAX_SIDE} px on a side')
-    pixel_size = 1.0 / scale
-    left = rect[0] - margin * pixel_size
-    bottom = rect[1] - margin * pixel_size
-    picture = np.zeros((height, width, 4), dtype=np.uint8)
-    # No outline or handle in the picture: clear the selection for the moment.
+@contextmanager
+def _isolated(settings, only=None):
+    """Draw without selection outlines or handles, and with `only` = (items, arrows),
+    without anything else: the selection is cleared and the other items hidden for the
+    moment, and everything comes back afterwards. Item references taken before may be
+    stale inside: look items up again by id."""
+    from .gpu import gpu_arrow
+    from ..properties import suspend_selection_updates, suspend_visibility_updates
     selected = [item.is_selected for item in settings.images]
     arrows = [arrow.is_selected for arrow in settings.arrows]
     shown = [item.show_in_editor for item in settings.images]
-    from .gpu import gpu_arrow
-    from ..properties import suspend_visibility_updates
     try:
         if only is not None:
             keep = {item.item_id for item in only[0]}
@@ -211,11 +206,7 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
             for arrow in settings.arrows:
                 if arrow.is_selected:
                     arrow.is_selected = False
-        for x, y, w, h in tiles(width, height):
-            data = _render_tile(settings, space, frame_number, left + x * pixel_size,
-                                bottom + y * pixel_size, pixel_size, w, h, background)
-            tile = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 4)
-            picture[y:y + h, x:x + w] = tile
+        yield
     finally:
         gpu_arrow.ARROW_FILTER = None
         with suspend_visibility_updates():
@@ -229,6 +220,34 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
             for arrow, state in zip(settings.arrows, arrows):
                 if arrow.is_selected != state:
                     arrow.is_selected = state
+
+
+def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), space=None,
+           frame_number=0, only=None):
+    """The picture of `rect` as a NumPy array (height, width, 4) of uint8, straight
+    alpha, top row first, ready for PNG. `only` is (items, arrows) to draw alone (see
+    `selection_contents`); the other items are hidden while drawing and come back."""
+    import numpy as np
+    from mathutils import Matrix
+    width, height = output_size(rect, scale, margin)
+    if max(width, height) > MAX_SIDE:
+        raise ValueError(f'{width} x {height} px is larger than {MAX_SIDE} px on a side')
+    pixel_size = 1.0 / scale
+    left = rect[0] - margin * pixel_size
+    bottom = rect[1] - margin * pixel_size
+    picture = np.zeros((height, width, 4), dtype=np.uint8)
+    with _isolated(settings, only):
+        for x, y, w, h in tiles(width, height):
+            tile_left, tile_bottom = left + x * pixel_size, bottom + y * pixel_size
+            span_w, span_h = w * pixel_size, h * pixel_size
+            projection = Matrix((
+                (2.0 / span_w, 0, 0, -1 - 2.0 * tile_left / span_w),
+                (0, 2.0 / span_h, 0, -1 - 2.0 * tile_bottom / span_h),
+                (0, 0, 1, 0), (0, 0, 0, 1)))
+            view_bounds = (tile_left, tile_bottom, tile_left + span_w, tile_bottom + span_h)
+            data = _render_tile(settings, space, frame_number, view_bounds, pixel_size, w, h,
+                                background, projection)
+            picture[y:y + h, x:x + w] = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 4)
     return unpremultiply(picture[::-1])
 
 

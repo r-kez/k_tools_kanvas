@@ -1,4 +1,4 @@
-"""Export the board, the selection or the view as a PNG picture."""
+"""Export the board, the selection, the view or one image as a PNG picture."""
 
 import os
 
@@ -65,11 +65,15 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         name='Area', description='Which part of the board goes into the picture',
         items=(('SELECTION', 'Selection', 'Around the selected items and arrows'),
                ('ALL', 'Whole Board', 'Around every visible item and arrow'),
-               ('VIEW', 'View', 'What the editor shows now')),
+               ('VIEW', 'View', 'What the editor shows now'),
+               ('IMAGE', 'Image', 'The active image alone, upright and at its own '
+                'resolution: adjustments, flip and mask kept, its place, rotation and '
+                'scale on the board left out')),
         default='SELECTION')
     scale: bpy.props.FloatProperty(  # type: ignore
         name='Scale', description=('Pixels per canvas unit: 1 is the size items have on the '
-                                   'canvas at 100% zoom, 2 is twice as sharp'),
+                                   'canvas at 100% zoom, 2 is twice as sharp. For Image, '
+                                   'pixels per image pixel: 1 is the size of the image'),
         default=1.0, min=0.05, max=32.0, soft_max=8.0)
     margin: bpy.props.IntProperty(  # type: ignore
         name='Margin', description='Empty space around the picture, in pixels',
@@ -89,6 +93,21 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
                      'group) and the arrows between them. Off, everything inside the area '
                      'shows, like a crop of the board'),
         default=True)
+    crop_to_mask: bpy.props.BoolProperty(  # type: ignore
+        name='Crop to Mask',
+        description=('A masked image counts only for what its mask shows, so the picture has '
+                     'no transparent margin where the mask hides the image'),
+        default=True)
+    keep_stretch: bpy.props.BoolProperty(  # type: ignore
+        name='Keep Stretch and Shear',
+        description=('With Image: keep the stretch and shear the image has on the board, as '
+                     'edits of the image (a fixed aspect ratio, a corrected slant). Off, the '
+                     'picture has the proportions of the image file'),
+        default=False)
+    include_markup: bpy.props.BoolProperty(  # type: ignore
+        name='Color Markup',
+        description='Paint the color markup of the image over it, as on the canvas',
+        default=False)
     load_image: bpy.props.BoolProperty(  # type: ignore
         name='Load into Blender',
         description=('Also add the picture to this file as a packed Blender image, for use '
@@ -103,6 +122,10 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         if not self.filepath:
             tree = getattr(context.space_data, 'edit_tree', None)
             name = bpy.path.clean_name(tree.name if tree else 'Kanvas')
+            item = export_image_item(settings)
+            if item is not None and _only_image_selected(settings):
+                self.scope = 'IMAGE'
+                name = bpy.path.clean_name(item.name or item.image_data.name)
             folder = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else ''
             self.filepath = os.path.join(folder, name + '.png')
         return ExportHelper.invoke(self, context, event)
@@ -111,21 +134,45 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         from ..utils.board_render import board_rect
         if self.scope == 'VIEW':
             return _view_rect(context)
-        return board_rect(get_settings(context), self.scope, self.only_selected)
+        return board_rect(get_settings(context), self.scope, self.only_selected,
+                          self.crop_to_mask)
+
+    def _size(self, context):
+        """(width, height) of the picture, or None when there is nothing to export."""
+        from ..utils.board_render import output_size
+        if self.scope == 'IMAGE':
+            from ..utils.item_picture import picture_size
+            item = export_image_item(get_settings(context))
+            size = None if item is None else picture_size(item, self.scale, self.crop_to_mask,
+                                                          self.keep_stretch)
+            return None if size is None else (size[0] + 2 * self.margin,
+                                              size[1] + 2 * self.margin)
+        rect = self._rect(context)
+        if rect is None or rect[2] <= rect[0] or rect[3] <= rect[1]:
+            return None
+        return output_size(rect, self._pixels_per_unit(context), self.margin)
 
     def draw(self, context):
-        from ..utils.board_render import MAX_SIDE, output_size
+        from ..utils.board_render import MAX_SIDE
         layout = self.layout
         layout.prop(self, 'scope')
         if self.scope == 'SELECTION':
             layout.prop(self, 'only_selected')
+        if self.scope != 'VIEW':
+            layout.prop(self, 'crop_to_mask')
+        if self.scope == 'IMAGE':
+            layout.prop(self, 'keep_stretch')
+            layout.prop(self, 'include_markup')
         layout.prop(self, 'scale')
         layout.prop(self, 'margin')
-        rect = self._rect(context)
-        if rect is None:
-            layout.label(text='Nothing to export', icon='ERROR')
+        size = self._size(context)
+        if size is None:
+            text = ('Select an image' if self.scope == 'IMAGE'
+                    and export_image_item(get_settings(context)) is None
+                    else 'Nothing to export')
+            layout.label(text=text, icon='ERROR')
         else:
-            width, height = output_size(rect, self._pixels_per_unit(context), self.margin)
+            width, height = size
             icon = 'ERROR' if max(width, height) > MAX_SIDE else 'IMAGE_DATA'
             layout.label(text=f'{width} x {height} px', icon=icon)
         layout.prop(self, 'background')
@@ -140,6 +187,8 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
     def execute(self, context):
         from ..utils.board_render import MAX_SIDE, output_size, render, write_png
         settings = get_settings(context)
+        if self.scope == 'IMAGE':
+            return self._export_image(settings)
         rect = self._rect(context)
         if rect is None or rect[2] <= rect[0] or rect[3] <= rect[1]:
             self.report({'WARNING'}, 'Nothing to export: select items, or choose Whole Board')
@@ -150,8 +199,7 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
             self.report({'ERROR'}, f'{width} x {height} px is too large (at most {MAX_SIDE} px '
                                    'on a side): lower the Scale')
             return {'CANCELLED'}
-        background = {'TRANSPARENT': (0.0, 0.0, 0.0, 0.0), 'CANVAS': _canvas_color(),
-                      'COLOR': tuple(self.color)}[self.background]
+        background = self._background()
         path = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), '.png')
         from ..utils.board_render import selection_contents
         only = (selection_contents(settings)
@@ -170,3 +218,69 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
             image.pack()
         self.report({'INFO'}, f'Saved {width} x {height} px to {path}')
         return {'FINISHED'}
+
+    def _background(self):
+        return {'TRANSPARENT': (0.0, 0.0, 0.0, 0.0), 'CANVAS': _canvas_color(),
+                'COLOR': tuple(self.color)}[self.background]
+
+    def _export_image(self, settings):
+        from ..utils.board_render import write_png
+        from ..utils.item_picture import render_item
+        item = export_image_item(settings)
+        if item is None:
+            self.report({'WARNING'}, 'Nothing to export: select an image')
+            return {'CANCELLED'}
+        path = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), '.png')
+        try:
+            picture = render_item(settings, item, self.scale, self.crop_to_mask,
+                                  self.include_markup, self.keep_stretch)
+            picture = framed(picture, self.margin, self._background())
+            write_png(path, picture)
+        except Exception as exc:
+            self.report({'ERROR'}, f'Could not export the picture: {exc}')
+            return {'CANCELLED'}
+        if self.load_image:
+            image = bpy.data.images.load(path, check_existing=False)
+            image.pack()
+        height, width = picture.shape[:2]
+        self.report({'INFO'}, f'Saved {width} x {height} px to {path}')
+        return {'FINISHED'}
+
+
+def export_image_item(settings):
+    """The image Export Image > Image saves: the active item when it is a selected
+    image, else the first selected image. None without one."""
+    from ..utils.item_picture import is_picture_item
+    index = settings.active_image_index
+    if 0 <= index < len(settings.images):
+        item = settings.images[index]
+        if item.is_selected and is_picture_item(item):
+            return item
+    return next((item for item in settings.images
+                 if item.is_selected and is_picture_item(item)), None)
+
+
+def _only_image_selected(settings):
+    selected = [item for item in settings.images if item.is_selected]
+    return (len(selected) == 1 and selected[0].item_type == 'IMAGE'
+            and not any(arrow.is_selected for arrow in settings.arrows))
+
+
+def framed(picture, margin, background):
+    """`picture` (straight alpha, uint8) with `margin` pixels around it, laid over
+    `background` (RGBA 0..1) as the board export does."""
+    import numpy as np
+    height, width = picture.shape[:2]
+    back = np.array([c * 255.0 for c in background], dtype=np.float32)
+    result = np.empty((height + 2 * margin, width + 2 * margin, 4), dtype=np.uint8)
+    result[:] = np.clip(back + 0.5, 0, 255).astype(np.uint8)
+    inner = result[margin:margin + height, margin:margin + width]
+    if back[3] <= 0:
+        inner[:] = picture
+        return result
+    alpha = picture[..., 3:4].astype(np.float32) / 255.0
+    color = picture[..., :3].astype(np.float32) * alpha + back[:3] * (1.0 - alpha)
+    out_alpha = picture[..., 3:4].astype(np.float32) + back[3] * (1.0 - alpha)
+    inner[..., :3] = np.clip(color + 0.5, 0, 255).astype(np.uint8)
+    inner[..., 3:4] = np.clip(out_alpha + 0.5, 0, 255).astype(np.uint8)
+    return result

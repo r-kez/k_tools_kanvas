@@ -178,12 +178,29 @@ Nada abaixo está implementado. Cada item precisa de um plano curto antes de mex
 
 ### Integração com o Blender
 
-- [ ] **P2 — Referência na vista 3D:** enviar uma imagem do quadro como imagem de fundo da câmera ou como Empty de referência, mantendo escala e (quando houver) a calibração de escala real. Decidir o destino pelo contexto (câmera ativa ou objeto selecionado) e se o vínculo é de cópia ou de referência ao arquivo.
+- [ ] **P2 — Referência na vista 3D** (em andamento, plano de 2026-11-10):
+  - [x] Fase 1 — imagem do item como aparece no board, em pé e na resolução da imagem (`utils/item_picture.py`): ajustes, flip e máscara mantidos, **Crop to Mask**, **Keep Stretch and Shear** opcional; Export Image ganhou o modo **Image** e o recorte pela máscara.
+  - [ ] Fase 2 — **Reference Image** (Empty de imagem): Front/Back/Right/Left/Top/Bottom/Current View, tamanho em unidades da cena, opacidade, Reference/Background, Only Axis Aligned, blueprint em lote, **Update Reference**, coleção **Kanvas References**.
+  - [ ] Fase 3 — **Overlay** na View 3D: textura ao vivo do Kanvas, opacidade, escala, posição, flip, encaixe no frame da câmera; mover por gizmo (sem modal parado).
+  - [ ] Painel **Kanvas > References** no painel N da View 3D: lista única (Empties e overlays), olho, selecionar, Update, Show in Kanvas, remover, subpainel do item ativo recolhido; esconder todos os overlays no cabeçalho; referências órfãs marcadas; preferência para esconder a aba.
+  - [ ] Fase 4 — **Fit Bounds to Mask** no próprio canvas (retângulo de recorte no item; alças, setas, snap, alinhamento e grupos respeitam o recorte).
+- [ ] **P2 — Correção de perspectiva** (ideia de 2026-11-10): o usuário marca onde deveria haver um retângulo (uma parede, uma folha, uma tela) e o Kanvas endireita a imagem.
+  - Ferramenta de **quatro cantos** em vez de polígono livre: sempre exatamente 4 pontos, arrastáveis, com lupa durante o arraste para acertar o canto. Um polígono livre deixaria ambíguo quais pontos são os cantos.
+  - **Proporção do retângulo:** campo de largura × altura (ou razão) quando se sabe a medida real; sem isso, uma estimativa a partir dos próprios cantos, ajustável. Prévia ao vivo.
+  - **Não destrutiva:** guardar os 4 cantos em UV no item e desenhar com mapeamento projetivo no shader (homografia por fragmento; dois triângulos afins dobrariam a imagem). A máscara e o markup continuam em UV da imagem original e seguem a correção sem converter nada.
+  - Opções: recortar ao quadrilátero ou mostrar a imagem inteira corrigida; desligar e religar a correção; resetar.
+  - Variante para depois: dois pares de linhas paralelas (pontos de fuga) quando nenhum retângulo inteiro aparece na foto.
+  - Liga com a calibração de escala real e com **Keep Stretch and Shear** do export: a imagem corrigida é o que vai para a referência 3D.
 - [ ] **P3 — Ligar item a objeto, câmera ou coleção:** um cartão ou frame vira atalho que seleciona ou enquadra o objeto no Blender, útil em checklists de produção. Tratar objeto apagado ou renomeado, e referenciar por ponteiro, não por nome.
 - [ ] **P3 — Abrir no Image Editor e mostrar na pasta:** comandos no menu de contexto para abrir a imagem no Image Editor do Blender e para abrir a pasta do arquivo de origem.
 - [ ] **P3 — Etiquetas e filtros:** marcar imagens e cartões (por exemplo “personagem”, “ambiente”) e filtrar a lista e o canvas por etiqueta, com cores opcionais.
 
 ### Refinamentos e robustez
+
+- [ ] **P3 — Gradientes perceptuais (OKLab)** (ideia de 2026-11-10, analisar): interpolar as cores dos gradientes em OKLab em vez de RGB, para transições sem o "meio acinzentado" (azul → amarelo em RGB passa por um cinza; em OKLab mantém a luminosidade e a saturação).
+  - Encaixe barato: a rampa já é amostrada em Python (`ColorRamp.evaluate` em `utils/shape_gradient.py`, 256 cores numa textura). Basta amostrar as paradas da rampa e interpolar entre elas em OKLab (sRGB linear → LMS → raiz cúbica → Lab e volta). O shader não muda.
+  - Opção por gradiente, ao lado do **Color Mode** do Blender: RGB, HSV/HSL (do Blender) e **OKLab** (nosso), talvez também **OKLCh** para arcos de matiz. Padrão a decidir: OKLab como padrão nos gradientes novos, RGB nos antigos para não mudar arquivos salvos.
+  - Pontos a conferir: o widget do Blender mostra a rampa em RGB (a prévia no painel diferiria do canvas, mostrar uma faixa nossa?), opacidade interpolada à parte, cores fora do gamut ao voltar para sRGB (recortar), e Copy/Paste Style e export SVG (SVG só interpola em sRGB: exportar com paradas extras).
 
 - [x] **P2 — Relatório de integridade do quadro (parte 1):** o botão de verificação ao lado da lista de itens (**Check Board**) procura e lista referências quebradas: links de imagem para um checklist apagado, regiões de cor que seguem uma tarefa inexistente, pontas de seta presas a um item apagado, itens num frame que não existe e identidades repetidas ou vazias. **Repair** só limpa a referência quebrada e nunca apaga itens, imagens, tinta ou texto; uma ponta de seta solta fica onde estava. Imagens ausentes são apenas listadas (precisam de **Replace Image**). `utils/board_check.py`, `operators/ops_check.py` e `scratch/test_board_check.py`; conferir o diálogo numa janela gráfica. **Pendente:** migração versionada entre versões do addon e mais verificações (regiões duplicadas, setas em checklists sem tarefa).
 - [ ] **P3 — Desempenho em quadros enormes:** agrupar texturas pequenas num atlas e/ou reduzir o custo por imagem no desenho (hoje cada imagem é uma chamada de desenho separada); medir antes e depois num quadro com mais de mil itens. Só vale se a medição mostrar ganho real depois do cache de texturas e do corte de itens fora da vista.

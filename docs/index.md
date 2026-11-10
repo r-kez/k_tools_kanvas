@@ -24,7 +24,7 @@ This documentation is written for people who use Kanvas. It explains what each t
 | [Comparing two images](comparison.md) | A/B comparison card with a divider |
 | [Arrows](arrows.md) | Connecting items with arrows |
 | [Shapes](shapes.md) | Drawing shapes, free paths with the pen and polygons; editing vertices and curves; holes, line styles and rounded corners; Shape Tools (union, difference, offset...); SVG import, drag and export |
-| [Exporting a picture](export-image.md) | Saving the selection, the board or the view as PNG, also as a texture in Blender |
+| [Exporting a picture](export-image.md) | Saving the selection, the board, the view or one image as PNG, also as a texture in Blender |
 
 ## Marking up images
 
