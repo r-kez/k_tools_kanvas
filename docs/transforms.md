@@ -127,7 +127,7 @@ Select one image, or several for batch changes, and open the **Selection** panel
 | **Saturation** | 0 to 5. Default 1 |
 | **Flip H / Flip V** | Mirror the image |
 | **Color Correction** | Turns the color-space correction used when drawing on or off |
-| **Black and White** | Shows the image in black and white, weighing each color by how bright it looks (a red and a green of the same brightness come out the same gray), to check its values without color. It is not the same as taking Saturation to 0 |
+| **Black and White** | Shows the image in black and white, giving each color the gray of the same perceived lightness (OKLab), to check its values without color. It is close to taking Saturation to 0, a little more faithful to how bright saturated colors look. Comparison cards show it too |
 | **Posterize** | Reduces the image to 2 to 12 gray tones, to see the main shapes of light and shadow. 0 turns it off |
 | **Sampling** | **Linear** smooths between pixels when the image is scaled; **Nearest** keeps hard square pixels, for pixel art, sprites and textures. It applies on the board, in Export Image and in the 3D View |
 

@@ -161,10 +161,18 @@ def get_kanvas_shader():
             + (
             "  if (value_mode > 0.5) {"
             "    float g = dot(c, vec3(0.2126, 0.7152, 0.0722));"
-            # Black and White weighs the colors in linear light, as the eye does; the
-            # board encodes to gamma itself, the 3D View does it later.
-            "    if (value_mode < 1.5 && use_color_correction > 0.5) {"
-            "      g = pow(dot(pow(c, vec3(2.2)), vec3(0.2126, 0.7152, 0.0722)), 1.0 / 2.2);"
+            # Black and White is the gray with the OKLab lightness of the color, which is
+            # how bright it looks (a saturated blue is darker than its luma says). The
+            # color is encoded to gamma by now on the board; the 3D View does it later.
+            "    if (value_mode < 1.5) {"
+            "      vec3 lin = use_color_correction > 0.5 ? pow(c, vec3(2.2)) : c;"
+            "      vec3 lms = vec3(dot(lin, vec3(0.4122214708, 0.5363325363, 0.0514459929)),"
+            "                      dot(lin, vec3(0.2119034982, 0.6806995451, 0.1073969566)),"
+            "                      dot(lin, vec3(0.0883024619, 0.2817188376, 0.6299787005)));"
+            "      lms = pow(max(lms, vec3(0.0)), vec3(1.0 / 3.0));"
+            "      float lightness = dot(lms, vec3(0.2104542553, 0.7936177850, -0.0040720468));"
+            "      g = lightness * lightness * lightness;"
+            "      if (use_color_correction > 0.5) g = pow(g, 1.0 / 2.2);"
             "    }"
             "    if (value_mode > 1.5) {"
             "      float steps = max(value_levels, 2.0);"

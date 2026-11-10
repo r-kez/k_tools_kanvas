@@ -266,13 +266,16 @@ def _quad(left, bottom, right, top):
 
 
 def _draw_source(source, rect, window, opacity):
+    from .gpu_common import value_view_uniforms
     from .gpu_image import get_kanvas_texture
     uv = uv_window(rect, window)
     if uv is None:
         return
+    value_mode, value_levels = value_view_uniforms(source)
     get_kanvas_texture(source.image_data).draw_rect(
         uv[1], uv[0], opacity, source.color_tint, source.brightness, source.contrast,
         source.saturation, source.use_color_correction, source.flip_h, source.flip_v,
+        value_mode=value_mode, value_levels=value_levels,
         nearest=source.sampling == 'NEAREST')
 
 
