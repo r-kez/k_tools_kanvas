@@ -38,6 +38,7 @@ See [Performance and memory](performance.md) for guidance.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Show Debug Panel** | Off | Shows the **Debug** panel in the sidebar |
+| **3D View References Panel** | On | Shows the **Kanvas** tab in the 3D View sidebar, with the [references](references-3d.md) sent from Kanvas |
 | **Show Text Card Edit Button** | On | Shows the pencil button on cards and checklists |
 | **Show Edit/Move Overlay** | On | Shows the **Edit \| Move** switch at the top of the canvas |
 | **Hide Kanvas Images in Blender Lists** | On | Keeps the images Kanvas uses out of Blender's image pickers (see [Images](images.md#image-names-in-blender)) |

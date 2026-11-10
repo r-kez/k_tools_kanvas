@@ -11,6 +11,7 @@ Requires **Blender 4.2 or newer**. The core add-on needs no extra software.
 - **Take notes.** Add text cards with Markdown, and checklists with progress. Connect items with arrows.
 - **Draw diagrams and vectors.** Add shapes, or draw free paths with the pen, with curves, holes, rounded corners and line styles. Join, cut and intersect shapes, and drag SVG files in or export shapes as SVG.
 - **Mark up images.** Hide parts of an image with masks. Paint named color regions to plan work, link them to checklist tasks, mark tasks as done, and isolate one color at a time.
+- **Model with your references.** Send images to the 3D View as reference images, cropped to their mask, as a single view or a blueprint set, and update them after editing. Export the board, the selection or one image as PNG.
 - **Select a subject with one click.** The optional Auto Select tool uses a small segmentation model that runs locally. It is downloaded only when you choose to.
 - **Stay in control.** Switch between **Edit** and **Move** modes so you can browse a board without changing it. Lock frames, hide items, and edit every shortcut.
 - **Stay fast.** Boards with hundreds of images stay responsive, and Blender's auto save keeps working.

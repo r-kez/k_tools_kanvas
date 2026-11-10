@@ -172,6 +172,9 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             layout.separator()
             layout.operator_context = 'INVOKE_DEFAULT'
             layout.operator("kanvas.export_board_image", icon='IMAGE_DATA', text="Export Image...")
+            if any(item.item_type == 'IMAGE' and item.image_data for item in content):
+                layout.operator("kanvas.add_3d_reference", icon='OUTLINER_OB_IMAGE',
+                                text="Send to 3D View...")
             layout.menu("KANVAS_MT_add_content", text="Add", icon='ADD')
 
         else:

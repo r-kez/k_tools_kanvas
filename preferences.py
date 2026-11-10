@@ -79,6 +79,13 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         default="//assets/kanvas"
     )
 
+    show_3d_references_panel: bpy.props.BoolProperty(  # type: ignore
+        name="3D View References Panel",
+        description=("Show the Kanvas tab in the sidebar of the 3D View, with the reference "
+                     "images sent from Kanvas"),
+        default=True,
+    )
+
     mask_resolution: bpy.props.EnumProperty(  # type: ignore
         name="Mask Resolution",
         description=("Resolution of image masks on the canvas. Higher keeps the edges of "
@@ -510,6 +517,7 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         box = col.box()
         box.label(text="Interface", icon='PREFERENCES')
         box.prop(self, "show_debug_panel")
+        box.prop(self, "show_3d_references_panel")
         box.prop(self, "show_text_edit_button")
         box.prop(self, "show_mode_overlay")
         box.prop(self, "hide_datablocks")

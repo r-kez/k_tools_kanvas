@@ -32,3 +32,6 @@ def draw(layout, context, settings, item):
     vector_row(column, 'Shear', item, 'shear_xy')
     gap(layout)
     draw_flips(layout, settings, item)
+    gap(layout)
+    layout.operator('kanvas.add_3d_reference', icon='OUTLINER_OB_IMAGE',
+                    text='Send to 3D View...')
