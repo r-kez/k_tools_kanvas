@@ -167,6 +167,25 @@ def xray_alpha(space):
     return shading.xray_alpha if shading.show_xray else None
 
 
+DEPTH_ORDER = {'BACK': 0, 'DEFAULT': 1, 'FRONT': 2}
+
+
+def draw_order(entries, region_3d):
+    """The references back to front for this view. They do not write depth (a clear corner
+    of one must not hide what is behind it), so the order is what lets a nearer picture
+    cover a farther one, seen from either side: Background ones first, In Front ones last,
+    and within each the farthest from the viewer first, by the distance of their middle."""
+    view = region_3d.view_matrix
+
+    def key(entry):
+        obj = entry.object
+        if obj is None:
+            return (1, 0.0)
+        distance = (view @ obj.matrix_world.translation).z        # negative ahead of the viewer
+        return (DEPTH_ORDER.get(obj.empty_image_depth, 1), distance)
+    return sorted(entries, key=key)
+
+
 def draw_references():
     """Draw the live references, after the scene: Default ones tested against the
     scene's depth, In Front ones over it, Background ones at the far plane."""
@@ -184,7 +203,7 @@ def draw_references():
     from .gpu.gpu_image import get_kanvas_texture
     from .item_picture import is_picture_item
     from .reference_3d import board_item
-    for entry in entries:
+    for entry in draw_order(entries, region_3d):
         obj = entry.object
         try:
             item = board_item(entry.board, entry.item_id)
