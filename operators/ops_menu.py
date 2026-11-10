@@ -161,6 +161,11 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
                 if any(item.item_type == 'IMAGE' for item in content):
                     layout.operator("kanvas.reset_transform", text="Scale").transform_type = 'SCALE'
                     layout.operator("kanvas.reset_transform", text="Rotation").transform_type = 'ROTATION'
+                if any(item.item_type == 'IMAGE' and item.mask_enabled for item in content):
+                    layout.separator()
+                    layout.operator("kanvas.fit_bounds_to_mask", icon='SHADING_BBOX')
+                if any(item.item_type == 'IMAGE' and item.crop_enabled for item in content):
+                    layout.operator("kanvas.reset_bounds", icon='LOOP_BACK')
 
             layout.separator()
             layout.label(text="Edit", icon='GREASEPENCIL')

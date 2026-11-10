@@ -5,6 +5,7 @@ from ..utils.gpu.gpu_common import rotate_point, get_prefs, get_collective_bound
 from ..utils.gizmo_geometry import handle_layout, collective_handle_layout
 from ..utils.gpu.gpu_image import get_cached_texture
 from ..utils.gpu.gpu_visibility import image_intersects_view
+from ..utils.item_crop import box_size
 
 
 _active_modal_areas = set()
@@ -355,6 +356,8 @@ class KanvasInteractionHelpers:
                         else item.image_data.size if item.image_data
                         else (item.shape_width, item.shape_height) if item.item_type == 'SHAPE'
                         else (item.text_width, item.text_height))
+                if item.image_data:
+                    w, h = box_size(item, w, h)           # an image shows only its crop
                 if w > 0 and h > 0:
                     data_list.append((
                         item.location, item.scale_xy, item.scale_master,
@@ -541,6 +544,7 @@ class KanvasInteractionHelpers:
             for img in selected_images:
                 tex = get_cached_texture(img.image_data)
                 w, h = (tex.texture.width, tex.texture.height) if (tex and tex.texture) else img.image_data.size
+                w, h = box_size(img, w, h)
                 if w > 0 and h > 0:
                     data_list.append((
                         img.location, img.scale_xy, img.scale_master,
@@ -574,6 +578,7 @@ class KanvasInteractionHelpers:
 
         tex_manager = get_cached_texture(img.image_data)
         w, h = (tex_manager.texture.width, tex_manager.texture.height) if (tex_manager and tex_manager.texture) else img.image_data.size
+        w, h = box_size(img, w, h)
         if w <= 0 or h <= 0:
             return -1
 
@@ -635,6 +640,7 @@ class KanvasInteractionHelpers:
 
             tex_manager = get_cached_texture(img.image_data)
             w, h = (tex_manager.texture.width, tex_manager.texture.height) if (tex_manager and tex_manager.texture) else img.image_data.size
+            w, h = box_size(img, w, h)
             if w <= 0 or h <= 0:
                 continue
 
@@ -1508,6 +1514,8 @@ class KanvasInteractionHelpers:
         tex_data = self.drag_target.image_data
         tex = get_cached_texture(tex_data) if tex_data else None
         w, h = (tex.texture.width, tex.texture.height) if (tex and tex.texture) else (tex_data.size if tex_data else (200, 200))
+        if tex_data:
+            w, h = box_size(self.drag_target, w, h)
         half_w = w / 2
         half_h = h / 2
 

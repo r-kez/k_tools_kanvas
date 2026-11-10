@@ -75,10 +75,12 @@ def image_to_canvas(item):
 
 def uv_to_image(item, u, v):
     """A point of the image (UV, as masks store them) in image space."""
+    from .item_crop import stored_crop
     width, height = item.image_data.size
+    u0, v0, u1, v1 = stored_crop(item)
     mirror_x, mirror_y = _mirrored(item)
-    return (((1.0 - u if mirror_x else u) - 0.5) * width,
-            ((1.0 - v if mirror_y else v) - 0.5) * height)
+    return (((u0 + u1 - u if mirror_x else u) - (u0 + u1) * 0.5) * width,
+            ((v0 + v1 - v if mirror_y else v) - (v0 + v1) * 0.5) * height)
 
 
 def _mask_coverage(item):
@@ -114,10 +116,28 @@ def visible_uv_rect(item):
             (columns[-1] + 1) / width, (rows[-1] + 1) / height)
 
 
+def picture_uv_rect(item, crop_to_mask=True):
+    """(u0, v0, u1, v1) of what a picture of the item shows: its crop (the whole image
+    without one), narrowed to what the mask leaves visible with `crop_to_mask`. None when
+    the mask hides everything of it."""
+    from .item_crop import stored_crop
+    base = stored_crop(item)
+    if not crop_to_mask:
+        return base
+    mask = visible_uv_rect(item)
+    if mask is None:
+        return None
+    u0, v0 = max(base[0], mask[0]), max(base[1], mask[1])
+    u1, v1 = min(base[2], mask[2]), min(base[3], mask[3])
+    if u1 - u0 < 1e-6 or v1 - v0 < 1e-6:
+        return None
+    return u0, v0, u1, v1
+
+
 def _visible_corners(item, crop_to_mask=True):
-    """The four corners, in image space, of what the picture shows: the whole image, or
-    the part the mask leaves visible. None when the mask hides everything."""
-    uv = visible_uv_rect(item) if crop_to_mask else (0.0, 0.0, 1.0, 1.0)
+    """The four corners, in image space, of what the picture shows: the item's crop, or
+    the part of it the mask leaves visible. None when the mask hides everything."""
+    uv = picture_uv_rect(item, crop_to_mask)
     if uv is None:
         return None
     return [uv_to_image(item, u, v)
@@ -134,7 +154,7 @@ def picture_quad(item, crop_to_mask=True, keep_stretch=False):
     corners of what shows, in picture space (image pixels around the middle, stretch and
     shear applied when kept), `uvs` the image coordinates at those corners, `bounds`
     (x0, y0, x1, y1) around the corners. None when the mask hides everything."""
-    uv = visible_uv_rect(item) if crop_to_mask else (0.0, 0.0, 1.0, 1.0)
+    uv = picture_uv_rect(item, crop_to_mask)
     if uv is None:
         return None
     uvs = [(uv[0], uv[1]), (uv[2], uv[1]), (uv[2], uv[3]), (uv[0], uv[3])]

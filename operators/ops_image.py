@@ -944,6 +944,9 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
         new_img.use_color_correction = source.use_color_correction
         new_img.show_in_editor = source.show_in_editor
         if source.item_type == 'IMAGE':
+            new_img.crop_uv = tuple(source.crop_uv)
+            new_img.crop_enabled = source.crop_enabled
+            new_img.crop_follow_mask = source.crop_follow_mask
             new_img.mask_enabled = source.mask_enabled
             new_img.mask_brush_size = source.mask_brush_size
             new_img.mask_erase = source.mask_erase
@@ -1327,7 +1330,8 @@ def average_image_sizes(items):
     for item in items:
         if not item.image_data:
             continue
-        width, height = item.image_data.size
+        from ..utils.item_crop import box_size
+        width, height = box_size(item, *item.image_data.size)
         longest = max(abs(width * item.scale_xy[0] * item.scale_master),
                       abs(height * item.scale_xy[1] * item.scale_master))
         if longest > 0:
@@ -1353,7 +1357,8 @@ def pack_image_items(items, gap=40, average_size=False):
     for item in items:
         if not item.image_data:
             continue
-        width, height = item.image_data.size
+        from ..utils.item_crop import box_size
+        width, height = box_size(item, *item.image_data.size)
         if width <= 0 or height <= 0:
             continue
         data = (item.location, item.scale_xy, item.scale_master,

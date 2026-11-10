@@ -17,6 +17,24 @@ While you edit:
 
 The **Mask** checkbox in the panel header shows or hides the mask. **Clear Image Mask** (the trash button) removes every mark from that image.
 
+## Fitting the bounds to the mask
+
+A mask hides part of an image, but the image keeps its whole size: its selection box, handles, snapping, alignment and frames still reach into the transparent space around what you can see. **Fit Bounds to Mask** makes the image only as big as what its mask shows.
+
+1. Mask the image, then finish editing the mask.
+2. In the **Mask** tab, click **Fit Bounds to Mask** (or right-click the image and choose it). It works on every selected image that has a mask.
+
+The image stays exactly where it is and looks the same; only its box shrinks. Selecting, moving, scaling and rotating now work on the visible part, snapping and **Align** use its edges, a frame around it fits the cutout, and arrows and checklist links keep pointing at the same place. Nothing of the image is lost: the hidden part is still there.
+
+- **Reset Bounds** (the arrow button, or the right-click menu) gives the image its whole size back, again without moving it.
+- **Auto-fit Bounds to Mask** keeps the bounds on the mask: they follow it when you finish editing it, and go back to the whole image if you turn the mask off.
+- While you edit the mask or the color markup, the whole image shows faintly around the cutout so you can paint outside the bounds. The selection box stays on the bounds. When you finish, the bounds apply again.
+- A mask that shows nothing cannot be fitted to.
+
+The picture of the image for the [3D View](references-3d.md) and for [Export Image](export-image.md) starts from the bounds. **Crop to Mask** there narrows it further to what the mask shows; without it, the picture is the bounds. [Marks](measure.md) stay on the same spot of the picture.
+
+Comparison cards still show the whole image of each side, and PureRef files do not carry the bounds.
+
 ## Mask resolution
 
 **Mask Resolution** in **Preferences > General > Memory Optimization** sets how sharp mask edges are on the canvas. The default, **Image**, follows the size of the image itself, up to 4096 pixels on the longer side. **4096**, **2048**, **1024** and **512** cap it: lower values use less video memory, and edges get softer on large images.

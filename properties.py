@@ -308,6 +308,44 @@ def update_shape_edit_vertices(self, context):
 def update_mask_editing(self, context):
     if self.mask_editing:
         show_panel_tab('image', 'MASK')
+    elif self.crop_follow_mask:
+        refit_to_mask(self)       # editing is over: the bounds follow the new mask
+
+
+def refit_to_mask(item):
+    """With Auto-fit on, bring the item's bounds to what its mask shows: no mask, no crop.
+    A mask that hides everything leaves the bounds as they are."""
+    from .utils.item_picture import is_picture_item
+    from .utils import item_crop
+    if getattr(item, 'item_type', '') != 'IMAGE' or not is_picture_item(item):
+        return
+    if item.mask_editing or item.markup_editing:
+        return
+    if not item.mask_enabled:
+        if item.crop_enabled:
+            item_crop.set_crop(item, None)
+        return
+    from .utils.item_picture import visible_uv_rect
+    rect = visible_uv_rect(item)
+    if rect is not None:
+        item_crop.set_crop(item, rect)
+
+
+def update_mask_enabled(self, context):
+    if self.crop_follow_mask:
+        refit_to_mask(self)
+    if getattr(context, 'area', None):
+        context.area.tag_redraw()
+
+
+def update_crop(self, context):
+    """The bounds of an item changed: frames around it refit, and the 3D View follows."""
+    update_frame_geometry(self, context)
+    try:
+        from .utils.overlay_3d import tag_3d_views
+        tag_3d_views()
+    except Exception as exc:
+        print(f'Kanvas: could not refresh the 3D references: {exc}')
 
 
 def update_markup_editing(self, context):
@@ -1050,8 +1088,21 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
     )
     mask_enabled: bpy.props.BoolProperty(  # type: ignore
         name='Mask', description='Show only the painted parts of this image instance',
-        default=False,
+        default=False, update=update_mask_enabled,
     )
+    crop_enabled: bpy.props.BoolProperty(  # type: ignore
+        name='Fit Bounds', default=False, update=update_crop,
+        description=('The item is only the part of its image given by the crop: its box, '
+                     'handles, snapping and frames ignore the rest. Nothing of the image is '
+                     'lost: Reset Bounds brings it back'))
+    crop_uv: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Crop', size=4, default=(0.0, 0.0, 1.0, 1.0), min=0.0, max=1.0,
+        description='Left, bottom, right and top of the part of the image the item shows',
+        update=update_crop)
+    crop_follow_mask: bpy.props.BoolProperty(  # type: ignore
+        name='Auto-fit', default=False,
+        description=('Keep the bounds on what the mask shows: they follow the mask when you '
+                     'finish editing it'))
     mask_dabs: bpy.props.CollectionProperty(type=KanvasMaskDab)  # type: ignore
     mask_polygons: bpy.props.CollectionProperty(type=KanvasMaskPolygon)  # type: ignore
     mask_next_sequence: bpy.props.IntProperty(default=1)  # type: ignore

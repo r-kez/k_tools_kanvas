@@ -63,7 +63,7 @@ def _quad(item, entry):
     state = (item.mask_enabled, item.mask_revision, len(item.mask_dabs),
              len(item.mask_polygons), item.flip_h, item.flip_v, tuple(item.scale_xy),
              tuple(item.shear_xy), tuple(item.image_data.size), entry.crop_to_mask,
-             entry.keep_stretch)
+             entry.keep_stretch, item.crop_enabled, tuple(item.crop_uv))
     cached = _quad_cache.get(key)
     if cached is None or cached[0] != state:
         cached = (state, picture_quad(item, entry.crop_to_mask, entry.keep_stretch))

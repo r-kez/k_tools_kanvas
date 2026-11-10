@@ -48,8 +48,10 @@ class KANVAS_OT_SelectImage(KanvasTreeOnly, bpy.types.Operator):
             dy_raw = (dy - dx * shy) / denom
             dx_raw = dx - dy_raw * shx
 
-            w = img.image_data.size[0] * img.scale_xy[0] * img.scale_master
-            h = img.image_data.size[1] * img.scale_xy[1] * img.scale_master
+            from ..utils.item_crop import box_size
+            w, h = box_size(img, *img.image_data.size)
+            w *= img.scale_xy[0] * img.scale_master
+            h *= img.scale_xy[1] * img.scale_master
 
             if -w/2 <= dx_raw <= w/2 and -h/2 <= dy_raw <= h/2:
                 hit_idx = idx

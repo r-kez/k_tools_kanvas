@@ -205,7 +205,11 @@ class KanvasTexture:
              flip_h=False, flip_v=False, use_color_correction=True,
              mask_texture=None, mask_enabled=False,
              markup_texture=None, markup_enabled=False,
-             value_mode=0.0, value_levels=0.0):
+             value_mode=0.0, value_levels=0.0, shown=(0.0, 0.0, 1.0, 1.0),
+             pivot=(0.5, 0.5)):
+        """Draw the image, or the part of it `shown` (u0, v0, u1, v1, in image coordinates)
+        around `pivot`, the point of the image that sits at `location` (the middle of the
+        item's crop). `scale` is the item's scale of the whole image."""
         if not self.texture: return
         shader = get_kanvas_shader()
         if not shader:
@@ -215,18 +219,22 @@ class KanvasTexture:
         # between redraws instead of allocating one per image per frame.
         geom_key = (self.texture.width, self.texture.height, tuple(location),
                     tuple(scale), tuple(shear), rotation, flip_h, flip_v,
-                    id(shader))
+                    id(shader), tuple(shown), tuple(pivot))
         batch = self._quad_batch
         if batch is None or self._quad_batch_key != geom_key:
-            w = self.texture.width  * scale[0]
-            h = self.texture.height * scale[1]
-            pts = [(-w/2, -h/2), (w/2, -h/2), (w/2, h/2), (-w/2, h/2)]
+            u0, v0, u1, v1 = shown
+            cu, cv = pivot
+            # Corners from the bottom left of the canvas; a flip mirrors the part in place.
+            left, right = (u1, u0) if flip_h else (u0, u1)
+            bottom, top = (v1, v0) if flip_v else (v0, v1)
+            sign_u = -1.0 if flip_h else 1.0
+            sign_v = -1.0 if flip_v else 1.0
+            tex_coords = [(left, bottom), (right, bottom), (right, top), (left, top)]
+            pts = [(sign_u * (u - cu) * self.texture.width * scale[0],
+                    sign_v * (v - cv) * self.texture.height * scale[1])
+                   for u, v in tex_coords]
             sheared_pts = [(p[0] + p[1] * shear[0], p[1] + p[0] * shear[1]) for p in pts]
             final_pts = [rotate_point((p[0] + location[0], p[1] + location[1]), location, rotation) for p in sheared_pts]
-
-            u0, u1 = (1, 0) if flip_h else (0, 1)
-            v0, v1 = (1, 0) if flip_v else (0, 1)
-            tex_coords = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
             batch = batch_for_shader(
                 shader, 'TRI_FAN',
                 {"pos": final_pts, "texCoord": tex_coords},

@@ -10,6 +10,7 @@ from .gpu_frame import draw_kanvas_frame, frame_header_height
 from .gpu_image import get_kanvas_texture, invalidate_texture_cache, prune_texture_cache, clear_texture_cache, get_cached_texture
 from .gpu_selection import draw_selection_box
 from .gpu_visibility import image_intersects_view
+from ..item_crop import box_scale, box_size, pivot_uv, shown_crop
 from .gpu_annotation import draw_canvas_annotations
 from .gpu_text import draw_text_card, draw_text_label, _region_bounds
 from .gpu_theme import (enable_soft_text_shadow, disable_soft_text_shadow,
@@ -660,9 +661,10 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
 
         try:
             final_scale = (img_item.scale_xy[0] * img_item.scale_master, img_item.scale_xy[1] * img_item.scale_master)
+            crop_shown, crop_pivot = shown_crop(img_item), pivot_uv(img_item)
             if not img_item.is_selected:
                 # Sub-pixel images add nothing visible; skip all their GPU work.
-                size = img_item.image_data.size
+                size = box_size(img_item, *img_item.image_data.size)
                 if max(size[0] * abs(final_scale[0]),
                        size[1] * abs(final_scale[1])) < 0.75 * view_pixel_size:
                     continue
@@ -695,6 +697,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
                     flip_h=img_item.flip_h, flip_v=img_item.flip_v,
                     use_color_correction=img_item.use_color_correction,
                     value_mode=value_mode, value_levels=value_levels,
+                    shown=crop_shown, pivot=crop_pivot,
                 )
 
             tex.draw(
@@ -715,6 +718,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
                 markup_texture=markup_texture,
                 markup_enabled=img_item.markup_visible,
                 value_mode=value_mode, value_levels=value_levels,
+                shown=crop_shown, pivot=crop_pivot,
             )
 
         except Exception:
@@ -769,8 +773,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         for img_item in selected_images:
             tex = get_cached_texture(img_item.image_data)
             if tex and tex.texture:
-                final_scale = (img_item.scale_xy[0] * img_item.scale_master,
-                               img_item.scale_xy[1] * img_item.scale_master)
+                final_scale = box_scale(img_item)
                 try:
                     tex.draw_outline(img_item.location, final_scale, img_item.shear_xy, img_item.rotation,
                                      color=sel_color, thickness=thickness)
@@ -782,7 +785,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
             from .gpu_image import draw_collective_outline, draw_collective_gizmos
             data_list = []
             for img in selected_images:
-                width, height = img.image_data.size
+                width, height = box_size(img, *img.image_data.size)
                 if width > 0 and height > 0:
                     data_list.append((img.location, img.scale_xy, img.scale_master,
                                       img.shear_xy, img.rotation, width, height))
@@ -798,8 +801,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
             img_item = selected_images[0]
             tex = get_cached_texture(img_item.image_data)
             if tex and tex.texture:
-                final_scale = (img_item.scale_xy[0] * img_item.scale_master,
-                               img_item.scale_xy[1] * img_item.scale_master)
+                final_scale = box_scale(img_item)
                 try:
                     if settings.show_gizmos:
                         tex.draw_gizmos(img_item.location, final_scale, img_item.shear_xy,

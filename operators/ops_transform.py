@@ -91,8 +91,10 @@ class KANVAS_OT_TransformImage(KanvasTreeOnly, bpy.types.Operator):
                 # Desfaz a rotação no mouse para trabalhar em eixos locais (Alinhados à imagem)
                 curr_l = rotate_point((mouse_x, mouse_y), center, -self.img.rotation)
                 
-                bw = self.img.image_data.size[0] * self.img.scale_master
-                bh = self.img.image_data.size[1] * self.img.scale_master
+                from ..utils.item_crop import box_size
+                bw, bh = box_size(self.img, *self.img.image_data.size)
+                bw *= self.img.scale_master
+                bh *= self.img.scale_master
                 if bw == 0 or bh == 0: return {'RUNNING_MODAL'}
 
                 # Detecta se quer Shear (Hold Modifier) ou Stretch (Padrão)

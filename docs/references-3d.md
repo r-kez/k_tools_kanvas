@@ -32,7 +32,7 @@ With several images selected as reference images, each one gets the next view of
 | **Opacity** | 1 | Below 1, the reference lets the scene show through |
 | **Only Axis Aligned** | Off | The reference shows only when you look straight along its axis (for example, a Front reference only in the front view), as in a blueprint. It then hides as soon as you orbit, in perspective too. Off, as with Blender's own reference images, it shows from every angle. Not used with **Current View** |
 | **Show in Perspective** | On | Also show the reference in perspective views, not only orthographic ones |
-| **Crop to Mask** | On | Only the part of the image its mask shows |
+| **Crop to Mask** | On | Only the part of the image its mask shows. Off, the reference is the image's [bounds](masks.md#fitting-the-bounds-to-the-mask): the whole image, or the part it was fitted to |
 | **Keep Stretch and Shear** | Off | Keep the stretch and shear the image has on the board, for when they are edits of the image itself |
 | **Color Markup** | Off | Paint the image's color markup over it |
 

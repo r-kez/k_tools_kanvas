@@ -118,8 +118,10 @@ def item_bounds(item):
     image = item.image_data
     if image is None or image.size[0] <= 0 or image.size[1] <= 0:
         return None
-    half_w = abs(image.size[0] * item.scale_xy[0] * item.scale_master) * 0.5
-    half_h = abs(image.size[1] * item.scale_xy[1] * item.scale_master) * 0.5
+    from .item_crop import box_size
+    box_w, box_h = box_size(item, image.size[0], image.size[1])      # the crop, if any
+    half_w = abs(box_w * item.scale_xy[0] * item.scale_master) * 0.5
+    half_h = abs(box_h * item.scale_xy[1] * item.scale_master) * 0.5
     shear_x, shear_y = item.shear_xy
     angle = math.radians(item.rotation)
     cos_a, sin_a = math.cos(angle), math.sin(angle)

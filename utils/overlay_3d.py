@@ -75,14 +75,16 @@ def hit_part(rect, point):
 def _visible_uv(item, crop_to_mask):
     """The UV rectangle the overlay shows (cropped to the mask), cached per mask state:
     finding the crop reads the whole mask."""
-    from .item_picture import visible_uv_rect
+    from .item_crop import stored_crop
+    from .item_picture import picture_uv_rect
     if not (crop_to_mask and item.mask_enabled):
-        return 0.0, 0.0, 1.0, 1.0
+        return stored_crop(item)
     key = (item.id_data.as_pointer(), item.item_id)
-    state = (item.mask_revision, len(item.mask_dabs), len(item.mask_polygons))
+    state = (item.mask_revision, len(item.mask_dabs), len(item.mask_polygons),
+             item.crop_enabled, tuple(item.crop_uv))
     cached = _crop_cache.get(key)
     if cached is None or cached[0] != state:
-        cached = (state, visible_uv_rect(item))
+        cached = (state, picture_uv_rect(item, True))
         _crop_cache[key] = cached
     return cached[1]
 
@@ -195,7 +197,8 @@ def _item_signature(item):
             item.brightness, item.contrast, item.saturation, tuple(item.color_tint),
             item.flip_h, item.flip_v, tuple(item.scale_xy), item.value_gray,
             item.value_levels, item.markup_visible, item.markup_revision,
-            item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item))
+            item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item),
+            item.crop_enabled, tuple(item.crop_uv))
 
 
 def notify_board_drawn(settings):

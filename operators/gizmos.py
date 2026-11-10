@@ -146,8 +146,10 @@ class KANVAS_GGT_ImageGizmos(bpy.types.GizmoGroup):
         # Dados da imagem
         loc = img.location
         rot = img.rotation
-        w = img.image_data.size[0] * img.scale_xy[0] * img.scale_master
-        h = img.image_data.size[1] * img.scale_xy[1] * img.scale_master
+        from ..utils.item_crop import box_size
+        w, h = box_size(img, *img.image_data.size)
+        w *= img.scale_xy[0] * img.scale_master
+        h *= img.scale_xy[1] * img.scale_master
         
         # 1. Configura Gizmo de Movimento (Tamanho Total da Imagem)
         self.move_gizmo.matrix_basis[0][3] = loc[0]

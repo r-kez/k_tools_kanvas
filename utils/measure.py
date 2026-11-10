@@ -198,15 +198,17 @@ def scale_text(item):
 def canvas_to_uv(item, point):
     """The image coordinates (UV, not clamped) under a point of the canvas. The
     opposite of `arrow_geometry.image_point_from_uv`."""
+    from .item_crop import stored_crop
     from .item_picture import _apply, _inverse, _mirrored, image_to_canvas
     inverse = _inverse(image_to_canvas(item))
     if inverse is None:
         return None
     x, y = _apply(inverse, (point[0] - item.location[0], point[1] - item.location[1]))
     width, height = pixel_size(item)
-    u, v = x / width + 0.5, y / height + 0.5
+    u0, v0, u1, v1 = stored_crop(item)
+    u, v = x / width + (u0 + u1) * 0.5, y / height + (v0 + v1) * 0.5
     mirror_x, mirror_y = _mirrored(item)
-    return (1.0 - u if mirror_x else u), (1.0 - v if mirror_y else v)
+    return (u0 + u1 - u if mirror_x else u), (v0 + v1 - v if mirror_y else v)
 
 
 def mark_corners(measure):

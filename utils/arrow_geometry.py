@@ -12,13 +12,15 @@ def _item_by_id(settings, item_id):
 
 
 def image_uv_at(item, point):
-    """Return source-image coordinates for a point inside a transformed image."""
+    """Return source-image coordinates for a point inside a transformed image (inside the
+    part of the image the item shows: its crop, or all of it while the mask is edited)."""
+    from .item_crop import shown_crop, uv_from_local
     image = item.image_data
     if image is None or image.size[0] <= 0 or image.size[1] <= 0:
         return None
-    width = image.size[0] * item.scale_xy[0] * item.scale_master
-    height = image.size[1] * item.scale_xy[1] * item.scale_master
-    if abs(width) < 1e-6 or abs(height) < 1e-6:
+    scale_x = item.scale_xy[0] * item.scale_master
+    scale_y = item.scale_xy[1] * item.scale_master
+    if abs(scale_x) < 1e-9 or abs(scale_y) < 1e-9:
         return None
     unrotated = rotate_point(point, item.location, -item.rotation)
     dx = unrotated[0] - item.location[0]
@@ -29,22 +31,23 @@ def image_uv_at(item, point):
         return None
     local_x = (dx - shear_x * dy) / determinant
     local_y = (dy - shear_y * dx) / determinant
-    u = local_x / width + 0.5
-    v = local_y / height + 0.5
-    if not (0.0 <= u <= 1.0 and 0.0 <= v <= 1.0):
+    u, v = uv_from_local(item, local_x / scale_x, local_y / scale_y,
+                         image.size[0], image.size[1])
+    u0, v0, u1, v1 = shown_crop(item)
+    eps = 1e-6        # a point on the edge is inside, whatever rounding says
+    if not (u0 - eps <= u <= u1 + eps and v0 - eps <= v <= v1 + eps):
         return None
-    return (1.0 - u if item.flip_h else u,
-            1.0 - v if item.flip_v else v)
+    return u, v
 
 
 def image_point_from_uv(item, uv):
+    from .item_crop import local_from_uv
     image = item.image_data
     if image is None or image.size[0] <= 0 or image.size[1] <= 0:
         return None
-    u = 1.0 - uv[0] if item.flip_h else uv[0]
-    v = 1.0 - uv[1] if item.flip_v else uv[1]
-    x = (u - 0.5) * image.size[0] * item.scale_xy[0] * item.scale_master
-    y = (v - 0.5) * image.size[1] * item.scale_xy[1] * item.scale_master
+    px, py = local_from_uv(item, uv, image.size[0], image.size[1])
+    x = px * item.scale_xy[0] * item.scale_master
+    y = py * item.scale_xy[1] * item.scale_master
     shear_x, shear_y = item.shear_xy
     sheared = (item.location[0] + x + shear_x * y,
                item.location[1] + y + shear_y * x)

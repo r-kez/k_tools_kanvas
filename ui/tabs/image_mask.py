@@ -6,8 +6,22 @@ from .common import gap
 
 def draw(layout, context, settings, item):
     layout.prop(item, "mask_enabled", text="Use Mask", toggle=True, icon="MOD_MASK")
+    draw_bounds(layout, item)
     gap(layout)
     draw_mask_properties(layout, item)
+
+
+def draw_bounds(layout, item):
+    """Fit Bounds to Mask: the item is only as big as what its mask shows."""
+    column = layout.column(align=True)
+    row = column.row(align=True)
+    row.operator("kanvas.fit_bounds_to_mask", icon='SHADING_BBOX')
+    sub = row.row(align=True)
+    sub.enabled = item.crop_enabled and not item.mask_editing
+    sub.operator("kanvas.reset_bounds", text="", icon='LOOP_BACK')
+    column.prop(item, "crop_follow_mask", text="Auto-fit Bounds to Mask")
+    if item.crop_enabled:
+        column.label(text="Bounds fitted to the mask", icon='CHECKMARK')
 
 
 def draw_mask_properties(layout, img):

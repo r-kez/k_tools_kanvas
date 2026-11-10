@@ -8,8 +8,13 @@ def image_intersects_view(item, view_bounds):
     if width <= 0 or height <= 0:
         return False
 
-    half_w = abs(width * item.scale_xy[0] * item.scale_master) * 0.5
-    half_h = abs(height * item.scale_xy[1] * item.scale_master) * 0.5
+    # Around the pivot, as far as what is drawn reaches: the crop's box, or while the mask
+    # is edited the whole image, which is not centered on the pivot.
+    from ..item_crop import pivot_uv, shown_crop
+    u0, v0, u1, v1 = shown_crop(item)
+    cu, cv = pivot_uv(item)
+    half_w = abs(width * item.scale_xy[0] * item.scale_master) * max(abs(u0 - cu), abs(u1 - cu))
+    half_h = abs(height * item.scale_xy[1] * item.scale_master) * max(abs(v0 - cv), abs(v1 - cv))
     shear_x, shear_y = item.shear_xy
     angle = math.radians(item.rotation)
     cos_a, sin_a = math.cos(angle), math.sin(angle)
