@@ -113,7 +113,7 @@ def get_kanvas_shader():
 
     try:
         vert_out = gpu.types.GPUStageInterfaceInfo(iface_name)
-        vert_out.smooth('VEC2', "v_TexCoord")
+        vert_out.smooth('VEC3', "v_TexCoord")
 
         shader_info = gpu.types.GPUShaderCreateInfo()
         shader_info.push_constant('VEC4', "color")
@@ -123,6 +123,11 @@ def get_kanvas_shader():
         shader_info.push_constant('FLOAT', "use_color_correction")
         shader_info.push_constant('FLOAT', "mask_enabled")
         shader_info.push_constant('FLOAT', "markup_enabled")
+        # Perspective correction: the quad carries homogeneous coordinates (u*w, v*w, w) and
+        # the fragment divides by w. A straightened rectangle gives each corner the image
+        # point its homography sends it to, with its w; the interpolation across the quad
+        # is then exact. Without it w is 1. This flag only clears what falls outside the image.
+        shader_info.push_constant('FLOAT', "persp_enabled")
         if with_value_view:
             shader_info.push_constant('FLOAT', "value_mode")
             shader_info.push_constant('FLOAT', "value_levels")
@@ -132,7 +137,7 @@ def get_kanvas_shader():
         shader_info.sampler(2, 'FLOAT_2D', "markup_image")
 
         shader_info.vertex_in(0, 'VEC2', "pos")
-        shader_info.vertex_in(1, 'VEC2', "texCoord")
+        shader_info.vertex_in(1, 'VEC3', "texCoord")
 
         shader_info.vertex_out(vert_out)
 
@@ -149,7 +154,12 @@ def get_kanvas_shader():
 
         shader_info.fragment_source(
             "void main() {"
-            "  vec4 tex = texture(image, v_TexCoord);"
+            "  vec2 uv = v_TexCoord.xy / v_TexCoord.z;"
+            "  float inside = 1.0;"
+            "  if (persp_enabled > 0.5) {"
+            "    inside = (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) ? 1.0 : 0.0;"
+            "  }"
+            "  vec4 tex = texture(image, uv);"
             "  vec3 c = tex.rgb;"
             "  c = max(c * brightness, vec3(0.0));"
             "  c = clamp((c - 0.5) * contrast + 0.5, 0.0, 1.0);"
@@ -180,12 +190,12 @@ def get_kanvas_shader():
             "    }"
             "    c = vec3(clamp(g, 0.0, 1.0));"
             "  }" if with_value_view else "") +
-            "  float mask_alpha = mask_enabled > 0.5 ? texture(mask_image, v_TexCoord).r : 1.0;"
+            "  float mask_alpha = mask_enabled > 0.5 ? texture(mask_image, uv).r : 1.0;"
             "  if (markup_enabled > 0.5) {"
-            "    vec4 markup = texture(markup_image, v_TexCoord);"
+            "    vec4 markup = texture(markup_image, uv);"
             "    c = c * (1.0 - markup.a) + markup.rgb;"
             "  }"
-            "  fragColor = vec4(c, tex.a * mask_alpha) * color;"
+            "  fragColor = vec4(c, tex.a * mask_alpha * inside) * color;"
             "}"
         )
 

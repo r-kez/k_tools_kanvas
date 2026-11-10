@@ -15,7 +15,7 @@ from importlib import import_module
 TABS = {
     'image': {'MAIN': 'image_main', 'ADJUST': 'image_adjust',
               'MASK': 'image_mask', 'MARKUP': 'image_markup',
-              'MEASURE': 'image_measure'},
+              'MEASURE': 'image_measure', 'PERSPECTIVE': 'image_perspective'},
     'shape': {'MAIN': 'shape_main', 'FILL': 'shape_fill',
               'LINE': 'shape_line', 'TEXT': 'shape_text'},
     'text': {'CARD': 'text_card', 'CONTENT': 'text_content'},

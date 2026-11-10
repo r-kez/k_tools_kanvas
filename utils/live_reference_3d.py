@@ -63,7 +63,8 @@ def _quad(item, entry):
     state = (item.mask_enabled, item.mask_revision, len(item.mask_dabs),
              len(item.mask_polygons), item.flip_h, item.flip_v, tuple(item.scale_xy),
              tuple(item.shear_xy), tuple(item.image_data.size), entry.crop_to_mask,
-             entry.keep_stretch, item.crop_enabled, tuple(item.crop_uv))
+             entry.keep_stretch, item.crop_enabled, tuple(item.crop_uv), item.persp_enabled,
+             tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing)
     cached = _quad_cache.get(key)
     if cached is None or cached[0] != state:
         cached = (state, picture_quad(item, entry.crop_to_mask, entry.keep_stretch))
@@ -159,6 +160,7 @@ def draw_references():
         return
     region_3d = space.region_3d
     from .gpu.gpu_common import value_view_uniforms
+    from .item_crop import corrected
     from .gpu.gpu_image import get_kanvas_texture
     from .item_picture import is_picture_item
     from .reference_3d import board_item
@@ -195,7 +197,7 @@ def draw_references():
                     use_color_correction=False,   # the 3D View encodes to sRGB itself
                     mask_texture=mask, markup_texture=markup,
                     value_mode=value_mode, value_levels=value_levels,
-                    nearest=item.sampling == 'NEAREST')
+                    nearest=item.sampling == 'NEAREST', warp=corrected(item))
             gpu.state.depth_test_set('NONE')
         except Exception as exc:   # one broken reference must not stop the 3D View
             print(f'Kanvas: could not draw a live reference: {exc}')

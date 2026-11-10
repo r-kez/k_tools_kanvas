@@ -14,6 +14,10 @@ While the mask or the color markup is edited, the whole image is drawn around th
 pivot (nothing moves), so strokes can reach what the crop hides. The box of the item stays
 the crop's.
 
+The same mapping carries the **perspective correction** (`utils/perspective.py`): an item
+with its perspective corrected is the straightened rectangle, so `box_size`, `box_scale`,
+`local_from_uv` and `uv_from_local` answer for that rectangle instead. It excludes a crop.
+
 Plain Python over the item's properties, usable from the drawing code and the tests.
 """
 
@@ -28,22 +32,41 @@ def stored_crop(item):
     return tuple(item.crop_uv)
 
 
+def corrected(item):
+    """The straightened rectangle of an item whose perspective is corrected (see
+    `perspective.state`), else None."""
+    if getattr(item, 'item_type', 'IMAGE') != 'IMAGE' or not getattr(item, 'persp_enabled', False):
+        return None
+    from . import perspective
+    return perspective.state(item)
+
+
 def shown_crop(item):
     """What is drawn: the crop, or the whole image while the mask or the color markup is
     being edited."""
+    if corrected(item) is not None:
+        return FULL
     if getattr(item, 'mask_editing', False) or getattr(item, 'markup_editing', False):
         return FULL
     return stored_crop(item)
 
 
 def pivot_uv(item):
-    """The point of the image that sits at the item's location: the middle of its crop."""
+    """The point of the image that sits at the item's location: the middle of its crop (of
+    the rectangle when the perspective is corrected: then (0.5, 0.5) is a point of the
+    rectangle, not of the image)."""
+    if corrected(item) is not None:
+        return 0.5, 0.5
     u0, v0, u1, v1 = stored_crop(item)
     return (u0 + u1) * 0.5, (v0 + v1) * 0.5
 
 
 def box_size(item, width, height):
-    """Size, in pixels, of the box of the item: the crop of an image `width` x `height`."""
+    """Size, in pixels, of the box of the item: the crop of an image `width` x `height`, or
+    the straightened rectangle."""
+    rectangle = corrected(item)
+    if rectangle is not None:
+        return rectangle.width, rectangle.height
     u0, v0, u1, v1 = stored_crop(item)
     return width * (u1 - u0), height * (v1 - v0)
 
@@ -51,6 +74,11 @@ def box_size(item, width, height):
 def box_scale(item):
     """(sx, sy) that turns the pixels of the whole image into the size of the box on the
     canvas: the item's scales times the share of the image the crop keeps."""
+    rectangle = corrected(item)
+    if rectangle is not None:
+        width, height = item.image_data.size
+        return (item.scale_xy[0] * item.scale_master * rectangle.width / width,
+                item.scale_xy[1] * item.scale_master * rectangle.height / height)
     u0, v0, u1, v1 = stored_crop(item)
     return (item.scale_xy[0] * item.scale_master * (u1 - u0),
             item.scale_xy[1] * item.scale_master * (v1 - v0))
@@ -59,6 +87,15 @@ def box_scale(item):
 def local_from_uv(item, uv, width, height):
     """Offset in pixels of an image point from the pivot, as the item shows it (flips
     mirror the crop in place). Stretch, shear, rotation and place come after."""
+    rectangle = corrected(item)
+    if rectangle is not None:
+        from . import perspective
+        point = perspective.uv_to_rect(rectangle, uv)
+        if point is None:
+            return 0.0, 0.0
+        r_u = 1.0 - point[0] if item.flip_h else point[0]
+        r_v = 1.0 - point[1] if item.flip_v else point[1]
+        return (r_u - 0.5) * rectangle.width, (r_v - 0.5) * rectangle.height
     u0, v0, u1, v1 = stored_crop(item)
     cu, cv = (u0 + u1) * 0.5, (v0 + v1) * 0.5
     u = (u0 + u1) - uv[0] if item.flip_h else uv[0]
@@ -68,11 +105,40 @@ def local_from_uv(item, uv, width, height):
 
 def uv_from_local(item, x, y, width, height):
     """The opposite of `local_from_uv`: the image point `x`, `y` pixels from the pivot."""
+    rectangle = corrected(item)
+    if rectangle is not None:
+        from . import perspective
+        r_u, r_v = x / rectangle.width + 0.5, y / rectangle.height + 0.5
+        point = perspective.rect_to_uv(rectangle, (1.0 - r_u if item.flip_h else r_u,
+                                                   1.0 - r_v if item.flip_v else r_v))
+        return (0.0, 0.0) if point is None else point
     u0, v0, u1, v1 = stored_crop(item)
     cu, cv = (u0 + u1) * 0.5, (v0 + v1) * 0.5
     u, v = x / width + cu, y / height + cv
     return ((u0 + u1) - u if item.flip_h else u,
             (v0 + v1) - v if item.flip_v else v)
+
+
+def box_corners_uv(item):
+    """The four corners of the box of an item as points of the image (UV): the corners of
+    its crop, or the four corners of the rectangle that is straightened."""
+    rectangle = corrected(item)
+    if rectangle is not None:
+        from . import perspective
+        return [perspective.rect_to_uv(rectangle, p) for p in ((0, 0), (1, 0), (1, 1), (0, 1))]
+    return corners_uv(stored_crop(item))
+
+
+def inside_box(item, local_x, local_y):
+    """Whether a point `local_x`, `local_y` pixels from the pivot (as `uv_from_local` takes
+    it) is inside the box of an item with its perspective corrected, edges included. None
+    when the item is not one."""
+    rectangle = corrected(item)
+    if rectangle is None:
+        return None
+    eps = 1e-6
+    return (abs(local_x) <= rectangle.width * (0.5 + eps)
+            and abs(local_y) <= rectangle.height * (0.5 + eps))
 
 
 def corners_uv(rect):
@@ -96,6 +162,8 @@ def set_crop(item, rect):
     shows: its location goes to the new middle, wherever that is on the canvas now.
     Returns False when the rectangle is too small or the image has no size."""
     from .arrow_geometry import image_point_from_uv
+    if rect is not None and getattr(item, 'persp_enabled', False):
+        return False         # a straightened image cannot be cropped
     if rect is not None:
         rect = clamp_rect(rect)
         if rect is None:

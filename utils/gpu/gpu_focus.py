@@ -49,8 +49,8 @@ def saturation_scale(settings):
 
 def _image_corners(item):
     from ..arrow_geometry import image_point_from_uv
-    from ..item_crop import corners_uv, stored_crop
-    corners = [image_point_from_uv(item, uv) for uv in corners_uv(stored_crop(item))]
+    from ..item_crop import box_corners_uv
+    corners = [image_point_from_uv(item, uv) for uv in box_corners_uv(item)]
     return None if any(corner is None for corner in corners) else corners
 
 

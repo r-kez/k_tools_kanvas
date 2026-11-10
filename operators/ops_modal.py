@@ -2382,6 +2382,14 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                 bpy.ops.kanvas.edit_measure('INVOKE_DEFAULT', item_id=item_id,
                                             measure_id=measure_id, part=part)
                 return {'CANCELLED'}
+        if not (event.ctrl or event.alt):
+            # The corners of the image whose Perspective tab is open can be dragged.
+            from ..utils import perspective as perspective_math
+            corner = perspective_math.hit_editable(settings, context.window_manager, mouse, pixel_size)
+            if corner is not None:
+                bpy.ops.kanvas.edit_perspective_corner('INVOKE_DEFAULT', item_id=corner[0],
+                                                       corner=corner[1])
+                return {'CANCELLED'}
         gradient_result = self._start_gradient_gesture(context, settings, mouse, pixel_size)
         if gradient_result is not None:
             return gradient_result

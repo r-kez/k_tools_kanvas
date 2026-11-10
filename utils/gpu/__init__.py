@@ -10,7 +10,7 @@ from .gpu_frame import draw_kanvas_frame, frame_header_height
 from .gpu_image import get_kanvas_texture, invalidate_texture_cache, prune_texture_cache, clear_texture_cache, get_cached_texture
 from .gpu_selection import draw_selection_box
 from .gpu_visibility import image_intersects_view
-from ..item_crop import box_scale, box_size, pivot_uv, shown_crop
+from ..item_crop import box_scale, box_size, corrected, pivot_uv, shown_crop
 from .gpu_annotation import draw_canvas_annotations
 from .gpu_text import draw_text_card, draw_text_label, _region_bounds
 from .gpu_theme import (enable_soft_text_shadow, disable_soft_text_shadow,
@@ -662,6 +662,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         try:
             final_scale = (img_item.scale_xy[0] * img_item.scale_master, img_item.scale_xy[1] * img_item.scale_master)
             crop_shown, crop_pivot = shown_crop(img_item), pivot_uv(img_item)
+            warp = corrected(img_item)
             if not img_item.is_selected:
                 # Sub-pixel images add nothing visible; skip all their GPU work.
                 size = box_size(img_item, *img_item.image_data.size)
@@ -720,7 +721,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
                 markup_enabled=img_item.markup_visible,
                 value_mode=value_mode, value_levels=value_levels,
                 shown=crop_shown, pivot=crop_pivot,
-                nearest=img_item.sampling == 'NEAREST',
+                nearest=img_item.sampling == 'NEAREST', warp=warp,
             )
 
         except Exception:
@@ -760,6 +761,12 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         draw_marks(settings, view_pixel_size, view_bounds)
     except Exception as exc:
         print(f"Kanvas marks: {exc}")
+    if not export:
+        try:
+            from .gpu_perspective import draw_corners
+            draw_corners(settings, view_pixel_size)
+        except Exception as exc:
+            print(f"Kanvas perspective corners: {exc}")
 
     draw_checklist_links(settings, view_pixel_size, region)
     draw_arrows(settings, view_pixel_size)

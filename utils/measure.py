@@ -43,7 +43,21 @@ def pixel_size(item):
 
 def mark_pixels(item, measure):
     """The size of a mark in image pixels: the length for a line, (width, height) for a
-    rectangle."""
+    rectangle. On an image with its perspective corrected the pixels are those of the
+    straightened picture, so a mark on the rectangle reads true sizes: a line is as long
+    as it is there, a rectangle as wide and high as its corners come out."""
+    from .item_crop import corrected
+    rectangle = corrected(item)
+    if rectangle is not None:
+        from . import perspective
+        points = [perspective.uv_to_rect(rectangle, uv) for uv in mark_corners(measure)]
+        if any(point is None for point in points):
+            return (0.0, 0.0) if measure.kind == 'RECT' else 0.0
+        points = [(x * rectangle.width, y * rectangle.height) for x, y in points]
+        if measure.kind == 'RECT':
+            return ((math.dist(points[0], points[1]) + math.dist(points[3], points[2])) * 0.5,
+                    (math.dist(points[0], points[3]) + math.dist(points[1], points[2])) * 0.5)
+        return math.dist(points[0], points[1])
     width, height = pixel_size(item)
     dx = abs(measure.p1[0] - measure.p0[0]) * width
     dy = abs(measure.p1[1] - measure.p0[1]) * height
@@ -204,10 +218,17 @@ def canvas_to_uv(item, point):
     if inverse is None:
         return None
     x, y = _apply(inverse, (point[0] - item.location[0], point[1] - item.location[1]))
+    mirror_x, mirror_y = _mirrored(item)
+    from .item_crop import corrected
+    rectangle = corrected(item)
+    if rectangle is not None:
+        from . import perspective
+        r_u, r_v = x / rectangle.width + 0.5, y / rectangle.height + 0.5
+        return perspective.rect_to_uv(rectangle, (1.0 - r_u if mirror_x else r_u,
+                                                  1.0 - r_v if mirror_y else r_v))
     width, height = pixel_size(item)
     u0, v0, u1, v1 = stored_crop(item)
     u, v = x / width + (u0 + u1) * 0.5, y / height + (v0 + v1) * 0.5
-    mirror_x, mirror_y = _mirrored(item)
     return (u0 + u1 - u if mirror_x else u), (v0 + v1 - v if mirror_y else v)
 
 

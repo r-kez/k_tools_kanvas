@@ -14,7 +14,7 @@ def _item_by_id(settings, item_id):
 def image_uv_at(item, point):
     """Return source-image coordinates for a point inside a transformed image (inside the
     part of the image the item shows: its crop, or all of it while the mask is edited)."""
-    from .item_crop import shown_crop, uv_from_local
+    from .item_crop import inside_box, shown_crop, uv_from_local
     image = item.image_data
     if image is None or image.size[0] <= 0 or image.size[1] <= 0:
         return None
@@ -31,8 +31,11 @@ def image_uv_at(item, point):
         return None
     local_x = (dx - shear_x * dy) / determinant
     local_y = (dy - shear_y * dx) / determinant
+    inside = inside_box(item, local_x / scale_x, local_y / scale_y)
     u, v = uv_from_local(item, local_x / scale_x, local_y / scale_y,
                          image.size[0], image.size[1])
+    if inside is not None:
+        return (u, v) if inside else None
     u0, v0, u1, v1 = shown_crop(item)
     eps = 1e-6        # a point on the edge is inside, whatever rounding says
     if not (u0 - eps <= u <= u1 + eps and v0 - eps <= v <= v1 + eps):

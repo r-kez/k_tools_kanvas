@@ -128,6 +128,22 @@ def _draw_rotation_stem(start, end, color):
 # Texture wrapper
 # ---------------------------------------------------------------------------
 
+def set_warp(shader, warp):
+    """Tell the shader whether the quad is a straightened rectangle (`perspective.Corrected`),
+    so what falls outside the image is clear."""
+    shader.uniform_float("persp_enabled", 0.0 if warp is None else 1.0)
+
+
+def homogeneous(coords, warp=None):
+    """The texture coordinates of a quad as the shader takes them: (u * w, v * w, w). Plain
+    (u, v) points get w = 1; with a straightened rectangle, points of the rectangle (0 to 1)
+    go through its homography to the image."""
+    if warp is None:
+        return [(u, v, 1.0) for u, v in coords]
+    a, b, c, d, e, f, g, h, i = warp.forward
+    return [(a * u + b * v + c, d * u + e * v + f, g * u + h * v + i) for u, v in coords]
+
+
 class KanvasTexture:
     def __init__(self, image: bpy.types.Image):
         self.image = image
@@ -219,10 +235,13 @@ class KanvasTexture:
              mask_texture=None, mask_enabled=False,
              markup_texture=None, markup_enabled=False,
              value_mode=0.0, value_levels=0.0, shown=(0.0, 0.0, 1.0, 1.0),
-             pivot=(0.5, 0.5), nearest=False):
+             pivot=(0.5, 0.5), nearest=False, warp=None):
         """Draw the image, or the part of it `shown` (u0, v0, u1, v1, in image coordinates)
         around `pivot`, the point of the image that sits at `location` (the middle of the
-        item's crop). `scale` is the item's scale of the whole image."""
+        item's crop). `scale` is the item's scale of the whole image. `warp` is the
+        straightened rectangle of an item with its perspective corrected (see
+        `perspective.Corrected`): the quad is that rectangle and the shader reads the image
+        where its homography says."""
         if not self.texture: return
         shader = get_kanvas_shader()
         if not shader:
@@ -232,25 +251,34 @@ class KanvasTexture:
         # between redraws instead of allocating one per image per frame.
         geom_key = (self.texture.width, self.texture.height, tuple(location),
                     tuple(scale), tuple(shear), rotation, flip_h, flip_v,
-                    id(shader), tuple(shown), tuple(pivot))
+                    id(shader), tuple(shown), tuple(pivot),
+                    None if warp is None else (warp.width, warp.height))
         batch = self._quad_batch
         if batch is None or self._quad_batch_key != geom_key:
             u0, v0, u1, v1 = shown
             cu, cv = pivot
-            # Corners from the bottom left of the canvas; a flip mirrors the part in place.
-            left, right = (u1, u0) if flip_h else (u0, u1)
-            bottom, top = (v1, v0) if flip_v else (v0, v1)
-            sign_u = -1.0 if flip_h else 1.0
-            sign_v = -1.0 if flip_v else 1.0
-            tex_coords = [(left, bottom), (right, bottom), (right, top), (left, top)]
-            pts = [(sign_u * (u - cu) * self.texture.width * scale[0],
-                    sign_v * (v - cv) * self.texture.height * scale[1])
-                   for u, v in tex_coords]
+            if warp is not None:
+                # The straightened rectangle around its middle; the quad carries the
+                # coordinates of the rectangle, mirrored by a flip.
+                tex_coords = [(1.0 - fu if flip_h else fu, 1.0 - fv if flip_v else fv)
+                              for fu, fv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))]
+                pts = [((fu - 0.5) * warp.width * scale[0], (fv - 0.5) * warp.height * scale[1])
+                       for fu, fv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))]
+            else:
+                # Corners from the bottom left of the canvas; a flip mirrors the part in place.
+                left, right = (u1, u0) if flip_h else (u0, u1)
+                bottom, top = (v1, v0) if flip_v else (v0, v1)
+                sign_u = -1.0 if flip_h else 1.0
+                sign_v = -1.0 if flip_v else 1.0
+                tex_coords = [(left, bottom), (right, bottom), (right, top), (left, top)]
+                pts = [(sign_u * (u - cu) * self.texture.width * scale[0],
+                        sign_v * (v - cv) * self.texture.height * scale[1])
+                       for u, v in tex_coords]
             sheared_pts = [(p[0] + p[1] * shear[0], p[1] + p[0] * shear[1]) for p in pts]
             final_pts = [rotate_point((p[0] + location[0], p[1] + location[1]), location, rotation) for p in sheared_pts]
             batch = batch_for_shader(
                 shader, 'TRI_FAN',
-                {"pos": final_pts, "texCoord": tex_coords},
+                {"pos": final_pts, "texCoord": homogeneous(tex_coords, warp)},
             )
             self._quad_batch = batch
             self._quad_batch_key = geom_key
@@ -269,6 +297,7 @@ class KanvasTexture:
             shader.uniform_float("use_color_correction", float(use_color_correction))
             shader.uniform_float("mask_enabled", float(mask_enabled and mask_texture is not None))
             shader.uniform_float("markup_enabled", float(markup_enabled and markup_texture is not None))
+            set_warp(shader, warp)
             if shader_supports_value_view():
                 shader.uniform_float("value_mode", value_mode)
                 shader.uniform_float("value_levels", value_levels)
@@ -281,7 +310,7 @@ class KanvasTexture:
     def draw_rect(self, rect, uv_rect=(0.0, 0.0, 1.0, 1.0), opacity=1.0, color_tint=(1.0, 1.0, 1.0),
                   brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
                   flip_h=False, flip_v=False, mask_texture=None, markup_texture=None,
-                  value_mode=0.0, value_levels=0.0, nearest=False):
+                  value_mode=0.0, value_levels=0.0, nearest=False, warp=None):
         """Draw part of the image into an axis-aligned rectangle (region pixels in POST_PIXEL).
         `uv_rect` is (u, v) at the left/bottom then at the right/top of the rectangle, so
         u0 > u1 mirrors. A mask or markup texture is read at the same coordinates."""
@@ -294,12 +323,12 @@ class KanvasTexture:
         self.draw_quad([(left, bottom), (right, bottom), (right, top), (left, top)],
                        [(u0, v0), (u1, v0), (u1, v1), (u0, v1)], opacity, color_tint,
                        brightness, contrast, saturation, use_color_correction,
-                       mask_texture, markup_texture, value_mode, value_levels, nearest)
+                       mask_texture, markup_texture, value_mode, value_levels, nearest, warp)
 
     def draw_quad(self, corners, uvs, opacity=1.0, color_tint=(1.0, 1.0, 1.0),
                   brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
                   mask_texture=None, markup_texture=None, value_mode=0.0, value_levels=0.0,
-                  nearest=False):
+                  nearest=False, warp=None):
         """Draw the image on four corners (any quad in the current matrix space, such as
         a plane in the 3D View) with `uvs` the image coordinates at each corner. A mask
         or markup texture is read at the same coordinates."""
@@ -308,7 +337,8 @@ class KanvasTexture:
         shader = get_kanvas_shader()
         if not shader:
             return
-        batch = batch_for_shader(shader, 'TRI_FAN', {'pos': corners, 'texCoord': uvs})
+        batch = batch_for_shader(shader, 'TRI_FAN',
+                                 {'pos': corners, 'texCoord': homogeneous(uvs, warp)})
         previous = gpu.state.blend_get()
         try:
             self.use_sampling(nearest)
@@ -324,6 +354,7 @@ class KanvasTexture:
             shader.uniform_float('use_color_correction', float(use_color_correction))
             shader.uniform_float('mask_enabled', float(mask_texture is not None))
             shader.uniform_float('markup_enabled', float(markup_texture is not None))
+            set_warp(shader, warp)
             if shader_supports_value_view():
                 shader.uniform_float('value_mode', value_mode)
                 shader.uniform_float('value_levels', value_levels)

@@ -348,6 +348,44 @@ def update_crop(self, context):
         print(f'Kanvas: could not refresh the 3D references: {exc}')
 
 
+def update_perspective(self, context):
+    """The corners, the proportions or the state of the perspective correction changed: the
+    box of the item changes with them, so frames refit and the 3D View follows."""
+    from .utils import perspective
+    perspective.forget(self)
+    update_crop(self, context)
+
+
+def update_persp_auto(self, context):
+    if not self.persp_auto:
+        ratio = perspective_estimate(self)
+        if ratio is not None:
+            self.persp_aspect = max(0.05, min(20.0, ratio))     # nothing jumps when it is taken over
+    update_perspective(self, context)
+
+
+def perspective_estimate(item):
+    from .utils import perspective
+    return perspective.estimated_ratio(item)
+
+
+def update_perspective(self, context):
+    """The corners, the proportions or the state of the perspective correction changed: the
+    box of the item changes with them, so frames refit and the 3D View follows."""
+    from .utils import perspective
+    perspective.forget(self)
+    update_crop(self, context)
+
+
+def update_persp_auto(self, context):
+    if not self.persp_auto:
+        from .utils import perspective
+        ratio = perspective.estimated_ratio(self)
+        if ratio is not None:
+            self.persp_aspect = max(0.05, min(20.0, ratio))     # nothing jumps when it is taken over
+    update_perspective(self, context)
+
+
 def update_markup_editing(self, context):
     if self.markup_editing:
         show_panel_tab('image', 'MARKUP')
@@ -369,7 +407,9 @@ class KanvasPanelTabs(bpy.types.PropertyGroup):
             ('MASK', 'Mask', 'Hide parts of the image', 'MOD_MASK'),
             ('MARKUP', 'Color', 'Color Markup: paint named color regions on the image', 'BRUSH_DATA'),
             ('MEASURE', 'Measure', 'Marks, and a scale that gives the image its real size',
-             'DRIVER_DISTANCE'))))
+             'DRIVER_DISTANCE'),
+            ('PERSPECTIVE', 'Perspective', 'Straighten the image: four corners become a rectangle',
+             'MESH_GRID'))))
     shape: bpy.props.EnumProperty(  # type: ignore
         name='Shape Tab', items=_tab_items((
             ('MAIN', 'Shape', 'Kind, vertices, outline, place and size', 'MESH_PLANE'),
@@ -1099,6 +1139,42 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         name='Crop', size=4, default=(0.0, 0.0, 1.0, 1.0), min=0.0, max=1.0,
         description='Left, bottom, right and top of the part of the image the item shows',
         update=update_crop)
+    persp_enabled: bpy.props.BoolProperty(  # type: ignore
+        name='Correct Perspective', default=False, update=update_perspective,
+        description=('Show the image straightened: the four corners become a rectangle. Use '
+                     'the Straighten button of the Perspective tab, which keeps it in place'))
+    persp_corners: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Corners', size=8, min=-0.5, max=1.5,
+        default=(0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8), update=update_perspective,
+        description=('The four corners of a real rectangle in the image (u, v of each): '
+                     'bottom left, bottom right, top right, top left'))
+    persp_auto: bpy.props.BoolProperty(  # type: ignore
+        name='Auto Proportions', default=True, update=update_persp_auto,
+        description='Estimate the proportions of the rectangle from the corners')
+    persp_aspect: bpy.props.FloatProperty(  # type: ignore
+        name='Proportions', default=1.0, min=0.05, max=20.0, precision=3,
+        description='Width / height of the real rectangle', update=update_perspective)
+    persp_editing: bpy.props.BoolProperty(  # type: ignore
+        name='Edit Corners', default=False, options={'SKIP_SAVE'}, update=update_perspective,
+        description='Show the image as it is in the photo, with its four corners to drag')
+    persp_enabled: bpy.props.BoolProperty(  # type: ignore
+        name='Straighten', default=False, update=update_perspective,
+        description=('Show the image straightened: its four corners become a rectangle. The '
+                     'Straighten button of the Perspective tab also keeps it in place'))
+    persp_corners: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Corners', size=8, min=-0.5, max=1.5,
+        default=(0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8), update=update_perspective,
+        description=('The four corners of a real rectangle in the image (u, v of each): '
+                     'bottom left, bottom right, top right, top left'))
+    persp_auto: bpy.props.BoolProperty(  # type: ignore
+        name='Auto Proportions', default=True, update=update_persp_auto,
+        description='Estimate the proportions of the rectangle from the corners')
+    persp_aspect: bpy.props.FloatProperty(  # type: ignore
+        name='Proportions', default=1.0, min=0.05, max=20.0, precision=3,
+        description='Width / height of the real rectangle', update=update_perspective)
+    persp_editing: bpy.props.BoolProperty(  # type: ignore
+        name='Edit Corners', default=False, options={'SKIP_SAVE'}, update=update_perspective,
+        description='Show the image as it is in the photo, with its four corners to drag')
     crop_follow_mask: bpy.props.BoolProperty(  # type: ignore
         name='Auto-fit', default=False,
         description=('Keep the bounds on what the mask shows: they follow the mask when you '

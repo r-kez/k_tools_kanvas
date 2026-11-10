@@ -81,8 +81,10 @@ def hit_part(rect, point):
 def _visible_uv(item, crop_to_mask):
     """The UV rectangle the overlay shows (cropped to the mask), cached per mask state:
     finding the crop reads the whole mask."""
-    from .item_crop import stored_crop
+    from .item_crop import corrected, stored_crop
     from .item_picture import picture_uv_rect
+    if corrected(item) is not None:
+        return 0.0, 0.0, 1.0, 1.0           # the rectangle, in its own coordinates
     if not (crop_to_mask and item.mask_enabled):
         return stored_crop(item)
     key = (item.id_data.as_pointer(), item.item_id)
@@ -101,6 +103,7 @@ def shown_part(item, entry):
     flipped) and `quad` is None. With it, `quad` is `item_picture.quad_from_uv` of what
     shows (the corners carry the stretch and shear). `aspect` is the width / height of
     what shows. None when the mask hides everything."""
+    from .item_crop import corrected
     from .item_picture import _mirrored, quad_from_uv
     uv = _visible_uv(item, entry.crop_to_mask)
     if uv is None:
@@ -110,7 +113,9 @@ def shown_part(item, entry):
         quad = quad_from_uv(item, uv, True)
         x0, y0, x1, y1 = quad[2]
         return uv, (x1 - x0) / max(1e-6, y1 - y0), quad
-    width, height = item.image_data.size
+    from .item_crop import box_size
+    width, height = box_size(item, *item.image_data.size) if corrected(item) is not None \
+        else item.image_data.size
     aspect = ((u1 - u0) * width) / max(1e-6, (v1 - v0) * height)
     mirror_x, mirror_y = _mirrored(item)
     if mirror_x != bool(entry.flip_h):
@@ -199,6 +204,7 @@ def draw_overlays():
     if not entries:
         return
     from .gpu.gpu_common import value_view_uniforms
+    from .item_crop import corrected
     from .gpu.gpu_image import get_kanvas_texture
     for entry in entries:
         try:
@@ -222,7 +228,7 @@ def draw_overlays():
                            use_color_correction=False,   # the 3D View encodes to sRGB itself
                            mask_texture=mask, markup_texture=markup,
                            value_mode=value_mode, value_levels=value_levels,
-                           nearest=item.sampling == 'NEAREST')
+                           nearest=item.sampling == 'NEAREST', warp=corrected(item))
             if quad is not None:
                 texture.draw_quad(quad[0], quad[1], **options)
             else:
@@ -239,7 +245,8 @@ def _item_signature(item):
             item.value_levels, item.sampling, item.markup_visible, item.markup_revision,
             len(item.markup_regions),
             item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item),
-            item.crop_enabled, tuple(item.crop_uv))
+            item.crop_enabled, tuple(item.crop_uv), item.persp_enabled,
+            tuple(item.persp_corners), item.persp_auto, item.persp_aspect, item.persp_editing)
 
 
 def notify_board_drawn(settings):
