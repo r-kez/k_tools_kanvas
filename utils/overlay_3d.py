@@ -16,6 +16,12 @@ import bpy
 
 from . import measure as measure_math
 
+SHOW_IN_ITEMS = (
+    ('ANY', 'Any View', 'In every 3D View'),
+    ('PERSPECTIVE', 'Perspective', 'Only in perspective views'),
+    ('ORTHOGRAPHIC', 'Orthographic', 'Only in orthographic views (Front, Top, ...)'),
+    ('CAMERA', 'Camera', 'Only when looking through the camera'),
+)
 ANCHOR_ITEMS = (
     ('CENTER', 'Center', 'In the middle of the view'),
     ('TOP_LEFT', 'Top Left', 'In the top left corner of the view'),
@@ -90,14 +96,20 @@ def _visible_uv(item, crop_to_mask):
 
 
 def shown_part(item, entry):
-    """(uv_rect, aspect) of an overlay: `uv_rect` is (u, v) at the left/bottom then at
-    the right/top of its rectangle (mirrored when flipped), `aspect` the width / height
-    of what shows. None when the mask hides everything."""
-    from .item_picture import _mirrored
+    """(uv_rect, aspect, quad) of an overlay. Without Keep Stretch and Shear, `uv_rect` is
+    (u, v) at the left/bottom then at the right/top of its rectangle (mirrored when
+    flipped) and `quad` is None. With it, `quad` is `item_picture.quad_from_uv` of what
+    shows (the corners carry the stretch and shear). `aspect` is the width / height of
+    what shows. None when the mask hides everything."""
+    from .item_picture import _mirrored, quad_from_uv
     uv = _visible_uv(item, entry.crop_to_mask)
     if uv is None:
         return None
     u0, v0, u1, v1 = uv
+    if entry.keep_stretch:
+        quad = quad_from_uv(item, uv, True)
+        x0, y0, x1, y1 = quad[2]
+        return uv, (x1 - x0) / max(1e-6, y1 - y0), quad
     width, height = item.image_data.size
     aspect = ((u1 - u0) * width) / max(1e-6, (v1 - v0) * height)
     mirror_x, mirror_y = _mirrored(item)
@@ -105,7 +117,18 @@ def shown_part(item, entry):
         u0, u1 = u1, u0
     if mirror_y:
         v0, v1 = v1, v0
-    return (u0, v0, u1, v1), aspect
+    return (u0, v0, u1, v1), aspect, None
+
+
+def shows_in(context, entry):
+    """Whether the overlay is meant for this kind of view (see SHOW_IN_ITEMS)."""
+    region_3d = getattr(context.space_data, 'region_3d', None)
+    kind = 'ANY' if region_3d is None else {
+        'PERSP': 'PERSPECTIVE', 'ORTHO': 'ORTHOGRAPHIC', 'CAMERA': 'CAMERA'}.get(
+            region_3d.view_perspective, 'ANY')
+    if entry.only_camera and entry.show_in == 'ANY':      # made before Show In existed
+        return kind == 'CAMERA'
+    return entry.show_in == 'ANY' or entry.show_in == kind
 
 
 def camera_frame(context):
@@ -126,20 +149,19 @@ def camera_frame(context):
 
 
 def entry_layout(context, entry):
-    """(item, rect, uv_rect) of an overlay in this 3D View, None when it does not show
-    here."""
+    """(item, rect, uv_rect, quad) of an overlay in this 3D View, None when it does not
+    show here. `quad` is None, or (four points in region pixels, four UV) for an overlay
+    that keeps the stretch and shear of its image."""
     from .item_picture import is_picture_item
     from .reference_3d import board_item
     item = board_item(entry.board, entry.item_id)
-    if not is_picture_item(item):
+    if not is_picture_item(item) or not shows_in(context, entry):
         return None
-    frame = camera_frame(context) if (entry.fit_camera or entry.only_camera) else None
-    if entry.only_camera and frame is None:
-        return None
+    frame = camera_frame(context) if entry.fit_camera else None
     shown = shown_part(item, entry)
     if shown is None:
         return None
-    uv_rect, aspect = shown
+    uv_rect, aspect, picture = shown
     region, area = context.region, context.area
     # Placed in the area, drawn in the region: shift by where the region starts.
     dx, dy = (region.x - area.x, region.y - area.y) if area else (0, 0)
@@ -148,7 +170,18 @@ def entry_layout(context, entry):
         frame = (frame[0] + dx, frame[1] + dy, frame[2] + dx, frame[3] + dy)
     left, bottom, right, top = overlay_rect(width, height, aspect, entry.size, entry.anchor,
                                             entry.offset, frame if entry.fit_camera else None)
-    return item, (left - dx, bottom - dy, right - dx, top - dy), uv_rect
+    rect = (left - dx, bottom - dy, right - dx, top - dy)
+    quad = None
+    if picture is not None:
+        # The picture's corners (pixels around its middle) spread over the rectangle.
+        corners, uvs, (x0, y0, x1, y1) = picture
+        points = [(rect[0] + (cx - x0) / max(1e-9, x1 - x0) * (rect[2] - rect[0]),
+                   rect[1] + (cy - y0) / max(1e-9, y1 - y0) * (rect[3] - rect[1]))
+                  for cx, cy in corners]
+        if entry.flip_h:
+            points = [(rect[0] + rect[2] - px, py) for px, py in points]
+        quad = (points, uvs)
+    return item, rect, uv_rect, quad
 
 
 def overlays(scene):
@@ -172,21 +205,27 @@ def draw_overlays():
             layout = entry_layout(context, entry)
             if layout is None:
                 continue
-            item, rect, uv_rect = layout
+            item, rect, uv_rect, quad = layout
             mask = markup = None
             if item.mask_enabled:
                 from .gpu.gpu_mask import mask_texture_for_item
                 mask = mask_texture_for_item(item)
-            if entry.include_markup and item.markup_visible and item.markup_regions:
+            if entry.include_markup and item.markup_regions:
+                # Shown whether or not the board shows its markup.
                 from .gpu.gpu_markup import markup_texture_for_item
-                markup = markup_texture_for_item(item)
+                markup = markup_texture_for_item(item, force=True)
             value_mode, value_levels = value_view_uniforms(item)
-            get_kanvas_texture(item.image_data).draw_rect(
-                rect, uv_rect, opacity=entry.opacity, color_tint=item.color_tint,
-                brightness=item.brightness, contrast=item.contrast,
-                saturation=item.saturation, use_color_correction=False,   # the 3D View encodes to sRGB itself
-                mask_texture=mask, markup_texture=markup,
-                value_mode=value_mode, value_levels=value_levels)
+            texture = get_kanvas_texture(item.image_data)
+            options = dict(opacity=entry.opacity, color_tint=item.color_tint,
+                           brightness=item.brightness, contrast=item.contrast,
+                           saturation=item.saturation,
+                           use_color_correction=False,   # the 3D View encodes to sRGB itself
+                           mask_texture=mask, markup_texture=markup,
+                           value_mode=value_mode, value_levels=value_levels)
+            if quad is not None:
+                texture.draw_quad(quad[0], quad[1], **options)
+            else:
+                texture.draw_rect(rect, uv_rect, **options)
         except Exception as exc:   # one broken overlay must not stop the 3D View
             print(f'Kanvas: could not draw an overlay: {exc}')
 
@@ -197,6 +236,7 @@ def _item_signature(item):
             item.brightness, item.contrast, item.saturation, tuple(item.color_tint),
             item.flip_h, item.flip_v, tuple(item.scale_xy), item.value_gray,
             item.value_levels, item.markup_visible, item.markup_revision,
+            len(item.markup_regions),
             item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item),
             item.crop_enabled, tuple(item.crop_uv))
 

@@ -102,6 +102,9 @@ class KanvasReference(bpy.types.PropertyGroup):
     # Overlays
     show: bpy.props.BoolProperty(  # type: ignore
         name='Show', description='Show this overlay', default=True, update=_redraw_overlays)
+    show_in: bpy.props.EnumProperty(  # type: ignore
+        name='Show In', description='Which 3D Views show this overlay',
+        items=overlay_3d.SHOW_IN_ITEMS, default='ANY', update=_redraw_overlays)
     opacity: bpy.props.FloatProperty(  # type: ignore
         name='Opacity', description='Opacity of the overlay', default=0.5, min=0.0, max=1.0,
         subtype='FACTOR', update=_redraw_overlays)
@@ -192,6 +195,9 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
         name='Fit to Camera',
         description='When looking through the camera, fit the overlay inside the camera frame',
         default=False)
+    show_in: bpy.props.EnumProperty(  # type: ignore
+        name='Show In', description='Which 3D Views show the overlay',
+        items=overlay_3d.SHOW_IN_ITEMS, default='ANY')
     size: bpy.props.FloatProperty(  # type: ignore
         name='Size', description='Length of the longer side of the image in the scene',
         default=5.0, min=0.0001, soft_max=100.0, subtype='DISTANCE', unit='LENGTH')
@@ -263,9 +269,11 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             column.prop(self, 'overlay_opacity', slider=True)
             column.prop(self, 'overlay_size', slider=True)
             column.prop(self, 'anchor')
+            column.prop(self, 'show_in')
             column.prop(self, 'fit_camera')
             column.separator()
             column.prop(self, 'crop_to_mask')
+            column.prop(self, 'keep_stretch')
             column.prop(self, 'include_markup')
             return
         column.prop(self, 'live')
@@ -348,7 +356,9 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             entry.name = item.name or item.image_data.name
             entry.opacity, entry.size = self.overlay_opacity, self.overlay_size
             entry.anchor, entry.fit_camera = self.anchor, self.fit_camera
+            entry.show_in = self.show_in
             entry.crop_to_mask, entry.include_markup = self.crop_to_mask, self.include_markup
+            entry.keep_stretch = self.keep_stretch
             added += 1
         if not added:
             return {'CANCELLED'}

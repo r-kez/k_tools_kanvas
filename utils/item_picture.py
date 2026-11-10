@@ -149,6 +149,14 @@ def _bounds(points):
             max(p[0] for p in points), max(p[1] for p in points))
 
 
+def quad_from_uv(item, uv, keep_stretch=False):
+    """(corners, uvs, bounds) of the picture of a UV rectangle (see `picture_quad`)."""
+    uvs = [(uv[0], uv[1]), (uv[2], uv[1]), (uv[2], uv[3]), (uv[0], uv[3])]
+    kept = _kept(item, keep_stretch)
+    corners = [_apply(kept, uv_to_image(item, u, v)) for u, v in uvs]
+    return corners, uvs, _bounds(corners)
+
+
 def picture_quad(item, crop_to_mask=True, keep_stretch=False):
     """What a live reference draws: (corners, uvs, bounds). `corners` are the four
     corners of what shows, in picture space (image pixels around the middle, stretch and
@@ -157,10 +165,7 @@ def picture_quad(item, crop_to_mask=True, keep_stretch=False):
     uv = picture_uv_rect(item, crop_to_mask)
     if uv is None:
         return None
-    uvs = [(uv[0], uv[1]), (uv[2], uv[1]), (uv[2], uv[3]), (uv[0], uv[3])]
-    kept = _kept(item, keep_stretch)
-    corners = [_apply(kept, uv_to_image(item, u, v)) for u, v in uvs]
-    return corners, uvs, _bounds(corners)
+    return quad_from_uv(item, uv, keep_stretch)
 
 
 def visible_canvas_bounds(item):

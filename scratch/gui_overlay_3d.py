@@ -96,7 +96,8 @@ def setup():
     # The splash screen covers the middle of the window: keep to the corners.
     entry = scene.kanvas_references[0]
     entry.anchor, entry.offset = 'BOTTOM_LEFT', (40.0, 40.0)
-    state.update(window=window, view3d=view3d, tree=tree)
+    state.update(window=window, view3d=view3d, tree=tree, kanvas=kanvas, region=region,
+                 space=kanvas.spaces.active)
 
 
 def capture(name):
@@ -190,7 +191,114 @@ def step_hidden():
     check(result == {'FINISHED'} and not bpy.context.scene.kanvas_references, f'removed {result}')
 
 
-STEPS = [setup, step_plain, step_flipped, step_live, step_hidden]
+def add_overlay(**options):
+    """A new overlay of the image, in the bottom left corner (clear of the splash screen)."""
+    with bpy.context.temp_override(window=state['window'], area=state['kanvas'],
+                                   region=state['region'], space_data=state['space']):
+        result = bpy.ops.kanvas.add_3d_reference('EXEC_DEFAULT', kind='OVERLAY',
+                                                 overlay_opacity=1.0, overlay_size=0.25,
+                                                 anchor='BOTTOM_LEFT', **options)
+    check(result == {'FINISHED'}, f'overlay added {result}')
+    entry = bpy.context.scene.kanvas_references[0]
+    entry.offset = (40.0, 40.0)
+    return entry
+
+
+def layout_of(entry):
+    from k_tools_kanvas.utils.overlay_3d import entry_layout
+    view3d = state['view3d']
+    region = next(r for r in view3d.regions if r.type == 'WINDOW')
+    with bpy.context.temp_override(window=state['window'], area=view3d, region=region,
+                                   space_data=view3d.spaces.active):
+        return entry_layout(bpy.context, entry)
+
+
+def step_stretch():
+    """Keep Stretch and Shear: the overlay takes the proportions of the stretched image."""
+    item = state['tree'].kanvas_settings.images[0]
+    item.saturation = 1.0          # an earlier step turned the image grey
+    item.scale_xy = (2.0, 1.0)
+    entry = add_overlay(keep_stretch=True)
+    left, bottom, right, top = layout_of(entry)[1]
+    check(abs((right - left) / (top - bottom) - 3.0) < 0.02,
+          f'a 300 x 200 picture stretched twice is 3:1 ({(right - left) / (top - bottom):.3f})')
+    check(layout_of(entry)[3] is not None, 'it is drawn as a quad')
+    state['entry_rect'] = layout_of(entry)[1]
+
+
+def step_stretch_pixels():
+    pixels, region = capture('stretch')
+    rect = state['entry_rect']
+    check(red(at(pixels, rect, 0.3, 0.5)) and blue(at(pixels, rect, 0.85, 0.5)),
+          f'the stretched picture {at(pixels, rect, 0.3, 0.5)} {at(pixels, rect, 0.85, 0.5)}')
+    item = state['tree'].kanvas_settings.images[0]
+    item.shear_xy = (0.4, 0.0)
+    entry = bpy.context.scene.kanvas_references[0]
+    left, bottom, right, top = layout_of(entry)[1]
+    check((right - left) / (top - bottom) > 3.3, 'a shear widens the picture')
+    # Without Keep Stretch the overlay is the plain 3:2 picture again.
+    entry.keep_stretch = False
+    left, bottom, right, top = layout_of(entry)[1]
+    check(abs((right - left) / (top - bottom) - 1.5) < 0.02 and layout_of(entry)[3] is None,
+          'the plain picture without it')
+    item.scale_xy = (1.0, 1.0)
+    item.shear_xy = (0.0, 0.0)
+    bpy.ops.kanvas.remove_3d_reference()
+
+
+def step_markup_setup():
+    """Color markup in the overlay does not depend on the board showing it."""
+    item = state['tree'].kanvas_settings.images[0]
+    region = item.markup_regions.add()
+    region.region_id, region.name = 'green', 'Green'
+    region.color, region.opacity, region.visible = (0.0, 1.0, 0.0), 1.0, True
+    polygon = region.polygons.add()
+    for uv in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)):
+        polygon.vertices.add().uv = uv
+    polygon.sequence = 1
+    item.markup_visible = False
+    entry = add_overlay(include_markup=False)
+    check(not item.markup_visible, 'hidden on the board')
+    state['entry_rect'] = layout_of(entry)[1]
+
+
+def green(pixel):
+    return pixel[1] > 0.8 and pixel[0] < 0.15 and pixel[2] < 0.15
+
+
+def step_markup_off():
+    pixels, region = capture('markup_off')
+    check(not green(at(pixels, state['entry_rect'], 0.3, 0.5)), 'no markup when the overlay leaves it out')
+    bpy.context.scene.kanvas_references[0].include_markup = True
+
+
+def step_markup_on():
+    pixels, region = capture('markup_on')
+    check(green(at(pixels, state['entry_rect'], 0.3, 0.5)),
+          f'the markup shows with the board hiding it {at(pixels, state["entry_rect"], 0.3, 0.5)}')
+    check(not state['tree'].kanvas_settings.images[0].markup_visible, 'the board is unchanged')
+    entry = bpy.context.scene.kanvas_references[0]
+    # Show In: this 3D View is a perspective one.
+    entry.show_in = 'ORTHOGRAPHIC'
+    check(layout_of(entry) is None, 'not in a perspective view when meant for orthographic ones')
+    entry.show_in = 'CAMERA'
+    check(layout_of(entry) is None, 'not outside the camera')
+    entry.show_in = 'PERSPECTIVE'
+    check(layout_of(entry) is not None, 'in a perspective view')
+    entry.show_in = 'ANY'
+    check(layout_of(entry) is not None, 'in any view')
+    # An overlay made with the old Only in Camera View checkbox becomes Show In: Camera.
+    from k_tools_kanvas.utils import reference_3d as ref
+    entry.only_camera = True
+    check(layout_of(entry) is None, 'the old checkbox still hides it outside the camera')
+    ref.migrate_references()
+    check(entry.show_in == 'CAMERA' and not entry.only_camera, 'and it is migrated')
+    entry.show_in = 'ANY'
+    bpy.ops.kanvas.remove_3d_reference()
+
+
+STEPS = [setup, step_plain, step_flipped, step_live, step_hidden, step_stretch,
+         step_stretch_pixels, step_markup_setup, step_markup_off, step_markup_on]
 
 
 def tick():

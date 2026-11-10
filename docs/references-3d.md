@@ -34,7 +34,7 @@ With several images selected as reference images, each one gets the next view of
 | **Show in Perspective** | On | Also show the reference in perspective views, not only orthographic ones |
 | **Crop to Mask** | On | Only the part of the image its mask shows. Off, the reference is the image's [bounds](masks.md#fitting-the-bounds-to-the-mask): the whole image, or the part it was fitted to |
 | **Keep Stretch and Shear** | Off | Keep the stretch and shear the image has on the board, for when they are edits of the image itself |
-| **Color Markup** | Off | Paint the image's color markup over it |
+| **Color Markup** | Off | Paint the image's color markup over it, whether or not the board shows it |
 
 ### Overlay options
 
@@ -43,9 +43,11 @@ With several images selected as reference images, each one gets the next view of
 | **Opacity** | 0.5 | How much of the scene shows through |
 | **Size** | 0.5 | Height of the overlay as a share of the height of the 3D View |
 | **Anchor** | Center | Where the overlay sits: the middle or a corner of the 3D View. It is placed in the whole editor, so opening or closing the toolbar (`T`) or the sidebar (`N`) never moves it |
+| **Show In** | Any View | Which 3D Views show the overlay: any, only perspective ones, only orthographic ones (Front, Top...), or only when you look through the camera |
 | **Fit to Camera** | Off | When you look through the camera, the overlay fits inside the camera frame, whatever its size and anchor |
+| **Keep Stretch and Shear** | Off | The overlay has the stretch and shear the image has on the board, for when they are edits of the image itself |
 | **Crop to Mask** | On | Only the part of the image its mask shows |
-| **Color Markup** | Off | Show the image's color markup, while it is visible on the board |
+| **Color Markup** | Off | Show the image's color markup, whether or not the board shows it |
 
 ### What the picture shows
 
@@ -62,7 +64,7 @@ The **Kanvas** tab of the 3D View sidebar (`N`) lists the references of the scen
 - **Remove Reference** (the trash button) deletes the reference from the scene, or the overlay from the view. The image stays on the board.
 - **Settings**, closed at first, has the options of the active row:
   - For a reference image: its size (or **Real Scale**), opacity, depth and visibility, how its picture is made (**Crop to Mask**, **Stretch and Shear**, **Color Markup**), and **Save as Image File** or **Make Live**. A live reference follows these at once; one saved as a file needs **Update Reference**.
-  - For an overlay: **Adjust in the View**, opacity, size, anchor, offset, **Flip**, **Fit to Camera**, **Only in Camera View**, **Crop to Mask** and **Color Markup**.
+  - For an overlay: **Adjust in the View**, opacity, size, anchor, offset, **Flip**, **Show In**, **Fit to Camera**, **Crop to Mask**, **Stretch and Shear** and **Color Markup**.
 
 A row whose image was deleted from the board is marked **Not on the board**. A reference image keeps working in the scene but can no longer be updated; an overlay stops showing until you remove it.
 
@@ -80,7 +82,7 @@ Turn on **Adjust in the View** in the overlay's **Settings**. A blue frame appea
 
 Turn **Adjust in the View** off when you are done. While it is off, the overlay ignores the mouse, so you can click and select objects under it. You can also type the **Offset** and **Size** in the panel.
 
-**Flip** mirrors the overlay from left to right, the classic way to see proportions with fresh eyes. **Only in Camera View** shows the overlay only when you look through the camera, which goes well with **Fit to Camera**.
+**Flip** mirrors the overlay from left to right, the classic way to see proportions with fresh eyes. **Show In** keeps the overlay out of the views it is not meant for; **Camera** goes well with **Fit to Camera**.
 
 ## Live or image file
 

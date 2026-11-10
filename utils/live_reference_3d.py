@@ -175,9 +175,9 @@ def draw_references():
             if item.mask_enabled:
                 from .gpu.gpu_mask import mask_texture_for_item
                 mask = mask_texture_for_item(item)
-            if entry.include_markup and item.markup_visible and item.markup_regions:
+            if entry.include_markup and item.markup_regions:
                 from .gpu.gpu_markup import markup_texture_for_item
-                markup = markup_texture_for_item(item)
+                markup = markup_texture_for_item(item, force=True)
             value_mode, value_levels = value_view_uniforms(item)
             opacity = obj.color[3] if obj.use_empty_image_alpha else 1.0
             depth = 'NONE' if obj.empty_image_depth == 'FRONT' else 'LESS_EQUAL'

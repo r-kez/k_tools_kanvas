@@ -190,8 +190,10 @@ def _drop_cached(key):
     _markup_cache.pop(key, None)
 
 
-def markup_texture_for_item(item):
-    if not item.image_data or not item.markup_visible:
+def markup_texture_for_item(item, force=False):
+    """The color markup texture of an image; None when the markup is hidden on the board,
+    unless `force` (the 3D View shows it whatever the board does)."""
+    if not item.image_data or not (item.markup_visible or force):
         return None
     key = (item.id_data.as_pointer(), item.item_id)
     width, height = mask_dimensions(item.image_data)

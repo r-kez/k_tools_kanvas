@@ -213,6 +213,8 @@ def migrate_references():
     changed = 0
     for scene in bpy.data.scenes:
         for entry in getattr(scene, 'kanvas_references', ()):
+            if entry.kind == 'OVERLAY' and entry.only_camera:
+                entry.show_in, entry.only_camera = 'CAMERA', False     # the old checkbox
             if entry.defaults_version >= DEFAULTS_VERSION:
                 continue
             entry.defaults_version = DEFAULTS_VERSION
