@@ -228,7 +228,25 @@ def schedule_sync():
         bpy.app.timers.register(_sync_all, first_interval=0.0)
 
 
+@bpy.app.handlers.persistent
+def _after_load(*_args):
+    from .reference_3d import migrate_references
+    migrate_references()
+
+
+def _migrate_open_file():
+    from .reference_3d import migrate_references
+    try:
+        migrate_references()
+    except Exception as exc:    # bpy.data may not be ready yet: the load handler retries
+        print(f'Kanvas: could not update the references: {exc}')
+    return None
+
+
 def register():
+    if _after_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_after_load)
+    bpy.app.timers.register(_migrate_open_file, first_interval=0.5)
     if not _handles:
         _handles.append(('POST_VIEW', bpy.types.SpaceView3D.draw_handler_add(
             draw_references, (), 'WINDOW', 'POST_VIEW')))
@@ -236,6 +254,10 @@ def register():
 
 def unregister():
     global _sync_scheduled
+    if _after_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_after_load)
+    if bpy.app.timers.is_registered(_migrate_open_file):
+        bpy.app.timers.unregister(_migrate_open_file)
     for _, handle in _handles:
         bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     _handles.clear()

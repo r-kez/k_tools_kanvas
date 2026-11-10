@@ -73,6 +73,9 @@ class KanvasReference(bpy.types.PropertyGroup):
         name='Keep Stretch and Shear',
         description='Keep the stretch and shear the image has on the board',
         default=False, update=_picture_changed)
+    # 0: made before references showed from every angle (Only Axis Aligned was on by
+    # default and hid them as soon as the view turned): `migrate_references` fixes those.
+    defaults_version: bpy.props.IntProperty(default=0)  # type: ignore
     # A live reference is drawn by Kanvas from the board; otherwise it shows an image file.
     # Off by default: references made before live ones existed are image files.
     live: bpy.props.BoolProperty(default=False)  # type: ignore
@@ -280,6 +283,7 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
             entry = scene.kanvas_references.add()
             entry.kind, entry.object, entry.board = 'EMPTY', obj, tree
             entry.name, entry.live = item.name, self.live
+            entry.defaults_version = ref.DEFAULTS_VERSION
             entry.item_id, entry.view = item_id, view
             entry.crop_to_mask = self.crop_to_mask
             entry.keep_stretch = self.keep_stretch

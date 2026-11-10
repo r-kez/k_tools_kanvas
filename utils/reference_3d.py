@@ -16,6 +16,7 @@ import os
 import tempfile
 
 COLLECTION_NAME = 'Kanvas References'
+DEFAULTS_VERSION = 1
 REFERENCE_FOLDER = 'references'
 
 # Rotation (Euler XYZ, degrees) that turns an image empty, which faces +Z, toward the
@@ -187,6 +188,24 @@ def create_empty(context, image, name, view, location, size, depth, opacity,
     obj.rotation_euler = view_rotation(view, context)
     reference_collection(context.scene).objects.link(obj)
     return obj
+
+
+def migrate_references():
+    """References made before they showed from every angle have Only Axis Aligned on,
+    which hides them as soon as the 3D View orbits (perspective included). Turn it off
+    once; a choice made afterwards is kept. Returns how many were changed."""
+    import bpy
+    changed = 0
+    for scene in bpy.data.scenes:
+        for entry in getattr(scene, 'kanvas_references', ()):
+            if entry.defaults_version >= DEFAULTS_VERSION:
+                continue
+            entry.defaults_version = DEFAULTS_VERSION
+            obj = entry.object
+            if entry.kind == 'EMPTY' and obj is not None and obj.show_empty_image_only_axis_aligned:
+                obj.show_empty_image_only_axis_aligned = False
+                changed += 1
+    return changed
 
 
 def is_deleted(entry):

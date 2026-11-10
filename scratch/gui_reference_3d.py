@@ -149,6 +149,17 @@ def run():
     scene.kanvas_reference_index = 0
     check(not bpy.ops.kanvas.update_3d_reference.poll(), 'no update without the image')
 
+    # --- References made when Only Axis Aligned was on by default ------------------------
+    old_entry = scene.kanvas_references[0]
+    old_entry.object.show_empty_image_only_axis_aligned = True
+    old_entry.defaults_version = 0
+    check(ref.migrate_references() == 1 and not old_entry.object.show_empty_image_only_axis_aligned,
+          'an old reference shows from every angle again')
+    old_entry.object.show_empty_image_only_axis_aligned = True      # the user's own choice
+    check(ref.migrate_references() == 0 and old_entry.object.show_empty_image_only_axis_aligned,
+          'a later choice is kept')
+    old_entry.object.show_empty_image_only_axis_aligned = False
+
     # --- Saved file: written to the assets folder ----------------------------------------
     folder = tempfile.mkdtemp()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(folder, 'refs.blend'))
