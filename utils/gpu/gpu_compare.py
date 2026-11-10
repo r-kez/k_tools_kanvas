@@ -272,7 +272,8 @@ def _draw_source(source, rect, window, opacity):
         return
     get_kanvas_texture(source.image_data).draw_rect(
         uv[1], uv[0], opacity, source.color_tint, source.brightness, source.contrast,
-        source.saturation, source.use_color_correction, source.flip_h, source.flip_v)
+        source.saturation, source.use_color_correction, source.flip_h, source.flip_v,
+        nearest=source.sampling == 'NEAREST')
 
 
 def draw_compare_content(item, settings, pixel_size):

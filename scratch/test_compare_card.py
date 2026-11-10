@@ -96,7 +96,7 @@ try:
     class Texture:
         texture = object()
 
-        def draw_rect(self, rect, uv, opacity, *args):
+        def draw_rect(self, rect, uv, opacity, *args, **kwargs):
             drawn.append((rect, uv, opacity))
 
     class Shader:

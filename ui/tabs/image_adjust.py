@@ -28,5 +28,6 @@ def draw(layout, context, settings, item):
     column = layout.column(align=True)
     column.label(text='Check Values')
     row = column.row(align=True)
-    row.prop(owner, prefix + 'value_gray', text='Grayscale', toggle=True)
+    row.prop(owner, prefix + 'value_gray', text='Black and White', toggle=True)
     row.prop(owner, prefix + 'value_levels', text='Posterize')
+    column.prop(owner, prefix + 'sampling', text='Sampling', expand=True)

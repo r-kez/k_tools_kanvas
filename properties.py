@@ -1324,9 +1324,17 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         default=False,
     )
     value_gray: bpy.props.BoolProperty(  # type: ignore
-        name='Grayscale',
-        description='Show this image in grayscale to check its values (light and dark)',
+        name='Black and White',
+        description='Show this image in black and white, weighing each color by how bright it looks',
         default=False,
+        update=lambda self, context: _tag_markup_changed(self, context),
+    )
+    sampling: bpy.props.EnumProperty(  # type: ignore
+        name='Sampling',
+        description='How the pixels of this image are read when it is scaled',
+        items=[('LINEAR', 'Linear', 'Smooth between pixels'),
+               ('NEAREST', 'Nearest', 'Hard pixels: pixel art, sprites, textures')],
+        default='LINEAR',
         update=lambda self, context: _tag_markup_changed(self, context),
     )
     value_levels: bpy.props.IntProperty(  # type: ignore
@@ -1416,6 +1424,17 @@ def _batch_adjustment_set(name):
             if item.item_type == 'IMAGE' and item.is_selected:
                 setattr(item, name, value)
     return set
+
+
+def _batch_sampling_get(settings):
+    source = _adjustment_source(settings)
+    return 1 if source and source.sampling == 'NEAREST' else 0
+
+
+def _batch_sampling_set(settings, value):
+    for item in settings.images:
+        if item.item_type == 'IMAGE' and item.is_selected:
+            item.sampling = 'NEAREST' if value == 1 else 'LINEAR'
 
 
 def update_active_arrow(self, context):
@@ -1618,10 +1637,20 @@ class KanvasSettings(bpy.types.PropertyGroup):
     )
 
     batch_value_gray: bpy.props.BoolProperty(  # type: ignore
-        name='Grayscale',
-        description='Show all selected images in grayscale',
+        name='Black and White',
+        description='Show all selected images in black and white',
         get=_batch_adjustment_get('value_gray', False),
         set=_batch_adjustment_set('value_gray'),
+        options={'SKIP_SAVE'},
+    )
+    batch_sampling: bpy.props.EnumProperty(  # type: ignore
+        name='Sampling',
+        description='How the pixels of all selected images are read when they are scaled',
+        items=[('LINEAR', 'Linear', 'Smooth between pixels'),
+               ('NEAREST', 'Nearest', 'Hard pixels: pixel art, sprites, textures')],
+        default='LINEAR',
+        get=_batch_sampling_get,
+        set=_batch_sampling_set,
         options={'SKIP_SAVE'},
     )
     batch_value_levels: bpy.props.IntProperty(  # type: ignore

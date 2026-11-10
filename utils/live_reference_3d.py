@@ -194,7 +194,8 @@ def draw_references():
                     contrast=item.contrast, saturation=item.saturation,
                     use_color_correction=False,   # the 3D View encodes to sRGB itself
                     mask_texture=mask, markup_texture=markup,
-                    value_mode=value_mode, value_levels=value_levels)
+                    value_mode=value_mode, value_levels=value_levels,
+                    nearest=item.sampling == 'NEAREST')
             gpu.state.depth_test_set('NONE')
         except Exception as exc:   # one broken reference must not stop the 3D View
             print(f'Kanvas: could not draw a live reference: {exc}')

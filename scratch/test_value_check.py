@@ -45,6 +45,11 @@ try:
     items[1].is_selected = False
     settings.batch_value_levels = 0
     assert items[0].value_levels == 0 and items[1].value_levels == 3, 'only the selection changes'
+    # Sampling goes through the same batch and the style copy.
+    assert all(item.sampling == 'LINEAR' for item in items) and settings.batch_sampling == 'LINEAR'
+    settings.batch_sampling = 'NEAREST'
+    assert items[0].sampling == 'NEAREST' and items[1].sampling == 'LINEAR', 'only the selection changes'
+    items[0].sampling = 'LINEAR'
     print('BATCH OK')
 
     # ---- shader assembly with a stand-in GPU -------------------------------------

@@ -221,7 +221,8 @@ def draw_overlays():
                            saturation=item.saturation,
                            use_color_correction=False,   # the 3D View encodes to sRGB itself
                            mask_texture=mask, markup_texture=markup,
-                           value_mode=value_mode, value_levels=value_levels)
+                           value_mode=value_mode, value_levels=value_levels,
+                           nearest=item.sampling == 'NEAREST')
             if quad is not None:
                 texture.draw_quad(quad[0], quad[1], **options)
             else:
@@ -235,7 +236,7 @@ def _item_signature(item):
             item.mask_revision, len(item.mask_dabs), len(item.mask_polygons),
             item.brightness, item.contrast, item.saturation, tuple(item.color_tint),
             item.flip_h, item.flip_v, tuple(item.scale_xy), item.value_gray,
-            item.value_levels, item.markup_visible, item.markup_revision,
+            item.value_levels, item.sampling, item.markup_visible, item.markup_revision,
             len(item.markup_regions),
             item.use_color_correction, tuple(item.shear_xy), measure_math.signature(item),
             item.crop_enabled, tuple(item.crop_uv))

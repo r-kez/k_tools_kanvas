@@ -698,6 +698,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
                     use_color_correction=img_item.use_color_correction,
                     value_mode=value_mode, value_levels=value_levels,
                     shown=crop_shown, pivot=crop_pivot,
+                    nearest=img_item.sampling == 'NEAREST',
                 )
 
             tex.draw(
@@ -719,6 +720,7 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
                 markup_enabled=img_item.markup_visible,
                 value_mode=value_mode, value_levels=value_levels,
                 shown=crop_shown, pivot=crop_pivot,
+                nearest=img_item.sampling == 'NEAREST',
             )
 
         except Exception:

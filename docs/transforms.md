@@ -127,14 +127,15 @@ Select one image, or several for batch changes, and open the **Selection** panel
 | **Saturation** | 0 to 5. Default 1 |
 | **Flip H / Flip V** | Mirror the image |
 | **Color Correction** | Turns the color-space correction used when drawing on or off |
-| **Grayscale** | Shows the image in gray tones, to check its values (light and dark) without color |
+| **Black and White** | Shows the image in black and white, weighing each color by how bright it looks (a red and a green of the same brightness come out the same gray), to check its values without color. It is not the same as taking Saturation to 0 |
 | **Posterize** | Reduces the image to 2 to 12 gray tones, to see the main shapes of light and shadow. 0 turns it off |
+| **Sampling** | **Linear** smooths between pixels when the image is scaled; **Nearest** keeps hard square pixels, for pixel art, sprites and textures. It applies on the board, in Export Image and in the 3D View |
 
 These change how the image is displayed on the board. The image file is untouched.
 
 ### Checking values
 
-**Grayscale** and **Posterize** are a quick way to judge a reference the way painters and lighting artists do: if the shapes still read in three or four tones, the values work. They apply to the image only. Color regions from [Color Markup](color-markup.md) stay in color on top. With several images selected, the controls change all of them together. Both are off by default.
+**Black and White** and **Posterize** are a quick way to judge a reference the way painters and lighting artists do: if the shapes still read in three or four tones, the values work. They apply to the image only. Color regions from [Color Markup](color-markup.md) stay in color on top. With several images selected, the controls change all of them together. Both are off by default.
 
 ### Quick adjustments with the wheel
 

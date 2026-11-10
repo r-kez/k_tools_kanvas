@@ -133,6 +133,7 @@ class KanvasTexture:
         self.image = image
         self.image_name = image.name
         self.texture: gpu.types.GPUTexture | None = None
+        self._nearest = False      # the filter the texture has now
         self.last_used_at = time.monotonic()
 
         # We track a manual version counter instead of relying on
@@ -183,6 +184,7 @@ class KanvasTexture:
                 # object on top of that — doubling VRAM usage per image.
                 # gpu.texture.from_image() performs the upload by itself.
                 self.texture = gpu.texture.from_image(image)
+                self._nearest = False
             else:
                 self.texture = None
         except Exception as e:
@@ -196,6 +198,17 @@ class KanvasTexture:
         self._quad_batch = None
         self._quad_batch_key = None
 
+    def use_sampling(self, nearest):
+        """Read the pixels hard (Nearest) or smooth (Linear). The texture is shared by
+        every item of the image, so the filter is set at each draw, only when it changes."""
+        nearest = bool(nearest)
+        if self.texture and nearest != self._nearest:
+            try:
+                self.texture.filter_mode(not nearest)
+                self._nearest = nearest
+            except Exception as exc:
+                print(f'Kanvas: could not set the sampling: {exc}')
+
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
@@ -206,7 +219,7 @@ class KanvasTexture:
              mask_texture=None, mask_enabled=False,
              markup_texture=None, markup_enabled=False,
              value_mode=0.0, value_levels=0.0, shown=(0.0, 0.0, 1.0, 1.0),
-             pivot=(0.5, 0.5)):
+             pivot=(0.5, 0.5), nearest=False):
         """Draw the image, or the part of it `shown` (u0, v0, u1, v1, in image coordinates)
         around `pivot`, the point of the image that sits at `location` (the middle of the
         item's crop). `scale` is the item's scale of the whole image."""
@@ -243,6 +256,7 @@ class KanvasTexture:
             self._quad_batch_key = geom_key
 
         try:
+            self.use_sampling(nearest)
             gpu.state.blend_set('ALPHA')
             shader.bind()
             shader.uniform_sampler("image", self.texture)
@@ -267,7 +281,7 @@ class KanvasTexture:
     def draw_rect(self, rect, uv_rect=(0.0, 0.0, 1.0, 1.0), opacity=1.0, color_tint=(1.0, 1.0, 1.0),
                   brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
                   flip_h=False, flip_v=False, mask_texture=None, markup_texture=None,
-                  value_mode=0.0, value_levels=0.0):
+                  value_mode=0.0, value_levels=0.0, nearest=False):
         """Draw part of the image into an axis-aligned rectangle (region pixels in POST_PIXEL).
         `uv_rect` is (u, v) at the left/bottom then at the right/top of the rectangle, so
         u0 > u1 mirrors. A mask or markup texture is read at the same coordinates."""
@@ -280,11 +294,12 @@ class KanvasTexture:
         self.draw_quad([(left, bottom), (right, bottom), (right, top), (left, top)],
                        [(u0, v0), (u1, v0), (u1, v1), (u0, v1)], opacity, color_tint,
                        brightness, contrast, saturation, use_color_correction,
-                       mask_texture, markup_texture, value_mode, value_levels)
+                       mask_texture, markup_texture, value_mode, value_levels, nearest)
 
     def draw_quad(self, corners, uvs, opacity=1.0, color_tint=(1.0, 1.0, 1.0),
                   brightness=1.0, contrast=1.0, saturation=1.0, use_color_correction=True,
-                  mask_texture=None, markup_texture=None, value_mode=0.0, value_levels=0.0):
+                  mask_texture=None, markup_texture=None, value_mode=0.0, value_levels=0.0,
+                  nearest=False):
         """Draw the image on four corners (any quad in the current matrix space, such as
         a plane in the 3D View) with `uvs` the image coordinates at each corner. A mask
         or markup texture is read at the same coordinates."""
@@ -296,6 +311,7 @@ class KanvasTexture:
         batch = batch_for_shader(shader, 'TRI_FAN', {'pos': corners, 'texCoord': uvs})
         previous = gpu.state.blend_get()
         try:
+            self.use_sampling(nearest)
             gpu.state.blend_set('ALPHA')
             shader.bind()
             shader.uniform_sampler('image', self.texture)

@@ -161,6 +161,11 @@ def get_kanvas_shader():
             + (
             "  if (value_mode > 0.5) {"
             "    float g = dot(c, vec3(0.2126, 0.7152, 0.0722));"
+            # Black and White weighs the colors in linear light, as the eye does; the
+            # board encodes to gamma itself, the 3D View does it later.
+            "    if (value_mode < 1.5 && use_color_correction > 0.5) {"
+            "      g = pow(dot(pow(c, vec3(2.2)), vec3(0.2126, 0.7152, 0.0722)), 1.0 / 2.2);"
+            "    }"
             "    if (value_mode > 1.5) {"
             "      float steps = max(value_levels, 2.0);"
             "      g = floor(clamp(g, 0.0, 0.9999) * steps) / (steps - 1.0);"
