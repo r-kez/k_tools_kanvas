@@ -21,6 +21,10 @@ import bpy
 import gpu
 
 PLACEHOLDER_SIDE = 1024     # longer side of a placeholder: its proportions, to 1/1024
+# Blender picks an image Empty by the pixels it draws and skips the fully clear ones, so a
+# clear placeholder could only be picked by its frame. A veil this faint (about 2% black)
+# is not seen, and makes the whole picture clickable.
+PLACEHOLDER_ALPHA = 0.02
 _handles = []
 _quad_cache = {}
 _sync_scheduled = False
@@ -40,16 +44,20 @@ def is_placeholder(image):
 
 
 def ensure_placeholder(obj, name, aspect):
-    """Give `obj` a transparent placeholder image of the right proportions."""
+    """Give `obj` a placeholder image of the right proportions: clear to the eye, but not
+    to a click (see PLACEHOLDER_ALPHA)."""
     width, height = placeholder_size(aspect)
     image = obj.data if is_placeholder(obj.data) else None
     if image is None:
         image = bpy.data.images.new(f'.Kanvas Ref {name}', width, height, alpha=True)
-        image.generated_color = (0.0, 0.0, 0.0, 0.0)
+        image.generated_color = (0.0, 0.0, 0.0, PLACEHOLDER_ALPHA)
         image['kanvas_placeholder'] = True
         obj.data = image
-    elif tuple(image.size) != (width, height):
-        image.generated_width, image.generated_height = width, height
+    else:
+        if tuple(image.size) != (width, height):
+            image.generated_width, image.generated_height = width, height
+        if abs(image.generated_color[3] - PLACEHOLDER_ALPHA) > 1e-6:
+            image.generated_color = (0.0, 0.0, 0.0, PLACEHOLDER_ALPHA)    # made before this
     return image
 
 

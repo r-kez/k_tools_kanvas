@@ -83,7 +83,7 @@ def setup():
     check(obj.data.source == 'GENERATED' and obj.data.packed_file is None
           and not obj.data.is_dirty, 'the placeholder is generated, not saved pixels')
     check(tuple(obj.data.size) == (1024, 683), f'placeholder proportions {tuple(obj.data.size)}')
-    check(tuple(obj.data.generated_color) == (0.0, 0.0, 0.0, 0.0), 'transparent placeholder')
+    check(tuple(obj.data.generated_color) == (0.0, 0.0, 0.0, 0.02), 'a veil too faint to see, but there to click')
     check(not bpy.ops.kanvas.update_3d_reference.poll(), 'no Update for a live reference')
     # Front orthographic view; the splash screen covers the middle of the window.
     space = view3d.spaces.active

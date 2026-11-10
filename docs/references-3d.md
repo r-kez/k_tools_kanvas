@@ -86,7 +86,7 @@ Turn **Adjust in the View** off when you are done. While it is off, the overlay 
 
 ## Live or image file
 
-A **live** reference is an image empty like any other: you select, move, rotate and scale it, and set its **Size**, **Offset**, opacity and depth in the Object properties as usual. It holds a transparent placeholder image with the proportions of the picture (named `.Kanvas Ref ...`, hidden from image lists), and Kanvas draws the picture on it. The placeholder is a generated image, so it adds nothing to the file and never asks to be saved.
+A **live** reference is an image empty like any other: you select, move, rotate and scale it, and set its **Size**, **Offset**, opacity and depth in the Object properties as usual. It holds a placeholder image with the proportions of the picture (named `.Kanvas Ref ...`, hidden from image lists), and Kanvas draws the picture on it. The placeholder is clear to the eye (a 2% veil), but Blender does not select an image empty by pixels that are fully clear, so you can click anywhere on the picture to select it, not only on its frame. The placeholder is a generated image, so it adds nothing to the file and never asks to be saved.
 
 Live references keep the colors of the board. An image file on an empty is shown through the scene's view transform (AgX by default), which makes it look washed out; a live reference is not.
 
