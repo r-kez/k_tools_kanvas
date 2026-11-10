@@ -172,7 +172,8 @@ def step_background():
                           ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))):
         vertex.uv = uv
     item.mask_revision += 1
-    # At an angle: Only Axis Aligned hides it.
+    # At an angle: Only Axis Aligned hides it (off by default, as in Blender).
+    bpy.context.scene.kanvas_references[0].object.show_empty_image_only_axis_aligned = True
     region_3d = state['view3d'].spaces.active.region_3d
     region_3d.view_rotation = Euler((math.radians(80), 0, math.radians(10))).to_quaternion()
 

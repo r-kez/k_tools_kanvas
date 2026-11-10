@@ -90,7 +90,8 @@ def run():
           f'faces front {obj.rotation_euler[:]}')
     check(abs(obj.empty_display_size - 2.0) < 1e-6 and obj.use_empty_image_alpha
           and abs(obj.color[3] - 0.5) < 1e-6, 'size and opacity')
-    check(obj.show_empty_image_only_axis_aligned, 'blueprint: only axis aligned')
+    check(not obj.show_empty_image_only_axis_aligned and obj.show_empty_image_perspective,
+          'as Blender: shown from every angle, perspective too')
     pixel = np.array(obj.data.pixels[:]).reshape(80, 120, 4)[40, 60]
     check(pixel[0] > 0.8 and pixel[2] < 0.1 and pixel[3] > 0.99, f'red picture {pixel}')
 

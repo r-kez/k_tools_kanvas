@@ -180,9 +180,10 @@ class KANVAS_OT_AddReference3D(KanvasTreeOnly, bpy.types.Operator):
         default=1.0, min=0.0, max=1.0, subtype='FACTOR')
     axis_aligned: bpy.props.BoolProperty(  # type: ignore
         name='Only Axis Aligned',
-        description=('Show a Front, Side, Top or Bottom reference only when looking along '
-                     'its axis, as a blueprint'),
-        default=True)
+        description=('Show a Front, Side, Top or Bottom reference only when looking straight '
+                     'along its axis, as a blueprint: it hides as soon as the view turns, '
+                     'also in perspective. Off, as Blender reference images are made'),
+        default=False)
     perspective: bpy.props.BoolProperty(  # type: ignore
         name='Show in Perspective',
         description='Also show the reference in perspective views, not only orthographic ones',

@@ -29,7 +29,7 @@ With several images selected as reference images, each one gets the next view of
 | **Size** | 5 m | Length of the longer side of the image in the scene |
 | **Type** | Reference | **Reference** is hidden behind objects in front of it, **Background** is drawn behind everything, **In Front** over everything |
 | **Opacity** | 1 | Below 1, the reference lets the scene show through |
-| **Only Axis Aligned** | On | The reference shows only when you look along its axis (for example, a Front reference only in the front view), as in a blueprint. Not used with **Current View** |
+| **Only Axis Aligned** | Off | The reference shows only when you look straight along its axis (for example, a Front reference only in the front view), as in a blueprint. It then hides as soon as you orbit, in perspective too. Off, as with Blender's own reference images, it shows from every angle. Not used with **Current View** |
 | **Show in Perspective** | On | Also show the reference in perspective views, not only orthographic ones |
 | **Crop to Mask** | On | Only the part of the image its mask shows |
 | **Keep Stretch and Shear** | Off | Keep the stretch and shear the image has on the board, for when they are edits of the image itself |
