@@ -8,6 +8,7 @@ the others are cyan. Nothing here is drawn into an exported picture.
 """
 
 import blf
+import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 
@@ -19,6 +20,8 @@ COLOR = (0.25, 0.85, 1.0, 0.95)
 SCALE_COLOR = (1.0, 0.72, 0.15, 1.0)
 FILL_ALPHA = 0.10
 LINE_WIDTH = 2.0
+LABEL_LIFT = 18.0           # how far labels rise while the handles show, in pixels
+HANDLE_HALF = 4.0          # half the side of a handle square, in pixels
 CAP_PIXELS = 6.0            # half length of the end caps of a line
 FONT_SIZE = 13
 MIN_IMAGE_SCREEN_SIZE = 40.0
@@ -44,6 +47,7 @@ def draw_marks(settings, view_pixel_size, view_bounds):
     items = list(_marked_items(settings, view_bounds))
     if not items:
         return
+    editing = measure_math.editing_item(settings, bpy.context.window_manager)
     shader = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     fill_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     viewport = gpu.state.viewport_get()
@@ -81,8 +85,34 @@ def draw_marks(settings, view_pixel_size, view_bounds):
                 shader.uniform_float('lineWidth', LINE_WIDTH)
                 shader.uniform_float('color', color)
                 batch_for_shader(shader, 'LINES', {'pos': lines}).draw(shader)
+                if editing is not None and item.item_id == editing.item_id:
+                    _draw_handles(fill_shader, item, mark, color, view_pixel_size,
+                                  mark.measure_id == _active_id(item))
     finally:
         gpu.state.blend_set(previous)
+
+
+def _active_id(item):
+    index = item.measure_active_index
+    return item.measures[index].measure_id if 0 <= index < len(item.measures) else ''
+
+
+def _draw_handles(shader, item, mark, color, view_pixel_size, active):
+    """Squares at the ends and corners and a diamond in the middle: what can be dragged."""
+    half = (HANDLE_HALF + (1.0 if active else 0.0)) * view_pixel_size
+    shader.bind()
+    for part, (x, y) in measure_math.mark_handles(item, mark):
+        if part == 'CENTER':
+            r = half * 1.15
+            points = [(x - r, y), (x, y - r), (x + r, y), (x, y + r)]
+        else:
+            points = [(x - half, y - half), (x + half, y - half),
+                      (x + half, y + half), (x - half, y + half)]
+        shader.uniform_float('color', (1.0, 1.0, 1.0, 0.95 if active else 0.7))
+        batch_for_shader(shader, 'TRI_FAN', {'pos': [
+            (px + (px - x) * 0.45, py + (py - y) * 0.45) for px, py in points]}).draw(shader)
+        shader.uniform_float('color', (*color[:3], 1.0 if active else 0.85))
+        batch_for_shader(shader, 'TRI_FAN', {'pos': points}).draw(shader)
 
 
 def draw_mark_labels(settings, region):
@@ -92,6 +122,7 @@ def draw_mark_labels(settings, region):
     if not items:
         return
     unit = settings.measure_unit
+    editing = measure_math.editing_item(settings, bpy.context.window_manager)
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     previous = gpu.state.blend_get()
     gpu.state.blend_set('ALPHA')
@@ -110,6 +141,8 @@ def draw_mark_labels(settings, region):
                 x, y = view.view_to_region(point[0], point[1], clip=False)
                 if x < -80 or x > region.width + 80 or y < -20 or y > region.height + 20:
                     continue
+                if editing is not None and item.item_id == editing.item_id:
+                    y += LABEL_LIFT       # clear of the handle in the middle of the mark
                 text = measure_math.mark_text(item, mark, unit)
                 text_w, text_h = blf.dimensions(0, text)
                 pad = 5.0

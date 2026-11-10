@@ -23,6 +23,26 @@ Each mark is stored in the image's own coordinates. It follows the image when yo
 
 On the canvas, every mark shows its size in a small label: the length of a line, `width × height` for a rectangle. Marks are drawn on the canvas only: they are never part of an [exported picture](export-image.md).
 
+### Editing a mark
+
+While the **Measure** tab is open and the image is selected, every mark shows its handles on the canvas: a square at each end of a line and at each corner of a rectangle, and a diamond in the middle. Drag to edit:
+
+| Drag | Result |
+| --- | --- |
+| An end of a line, or a corner of a rectangle | Moves that point (the rest stays) |
+| A side of a rectangle | Moves that side |
+| The middle, or the body of a line | Moves the whole mark |
+
+- A click on a handle without a drag only makes that mark the active one.
+- Hold `Shift` while dragging an end to keep the line along the image axes or at 45°, or a corner to keep the rectangle square.
+- Press `Esc` or right-click during the drag to put the mark back as it was.
+- The scale mark is edited the same way. Its real size stays what you said, so moving an end changes the scale: `1 px = ...` follows, and so do the other marks and the references in the 3D View.
+- A mark cannot be dragged outside the image, or made so small it has no size.
+
+Change the real size, the unit or the side (height or width) of the scale in the **Scale** box. Rename a mark by clicking its name in the list.
+
+With the Measure tab closed, the handles are hidden and clicks move the image as usual.
+
 ### The list of marks
 
 | Control | What it does |

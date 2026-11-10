@@ -182,6 +182,79 @@ def check_dialog_dismissed():
           'the mark stays when the dialog is dismissed')
 
 
+def select_for_editing():
+    photo().is_selected = True
+    settings().active_image_index = 0
+    bpy.context.window_manager.kanvas_tabs.image = 'MEASURE'
+
+
+def handle_drag(start, end, release=True, shift=False):
+    """Press on a handle, drag, release."""
+    actions = [lambda: send('MOUSEMOVE', 'NOTHING', start),
+               lambda: send('LEFTMOUSE', 'PRESS', start),
+               lambda: send('MOUSEMOVE', 'NOTHING', end, shift=shift)]
+    if release:
+        actions.append(lambda: send('LEFTMOUSE', 'RELEASE', end, shift=shift))
+    return actions
+
+
+def near(a, b, tolerance=0.02):
+    return all(abs(x - y) < tolerance for x, y in zip(a, b))
+
+
+def check_end_moved():
+    mark = photo().measures[0]
+    check(near(mark.p1, (0.9, 0.7)) and near(mark.p0, (0.2, 0.3)),
+          f'the end of the line was dragged {tuple(mark.p0)} {tuple(mark.p1)}')
+    check(photo().measure_active_index == 0, 'the mark became the active one')
+
+
+def check_center_moved():
+    mark = photo().measures[1]
+    check(near(mark.p0, (0.4, 0.4)) and near(mark.p1, (0.6, 0.7)),
+          f'the rectangle moved by its middle {tuple(mark.p0)} {tuple(mark.p1)}')
+
+
+def check_edge_moved():
+    mark = photo().measures[1]
+    check(near(mark.p1, (0.7, 0.7)) and near(mark.p0, (0.4, 0.4)),
+          f'one side of the rectangle moved {tuple(mark.p0)} {tuple(mark.p1)}')
+
+
+def check_edit_cancelled():
+    mark = photo().measures[0]
+    check(near(mark.p0, (0.2, 0.3)) and near(mark.p1, (0.9, 0.7)),
+          f'Escape restores the mark {tuple(mark.p0)} {tuple(mark.p1)}')
+
+
+def check_shift_corner():
+    mark = photo().measures[1]
+    width = abs(mark.p1[0] - mark.p0[0]) * 400
+    height = abs(mark.p1[1] - mark.p0[1]) * 200
+    check(abs(width - height) < 4.0, f'a corner dragged with Shift stays square {width} {height}')
+
+
+def check_click_selects():
+    check(photo().measure_active_index == 2, 'a click on a handle selects the mark')
+    check(near(photo().measures[2].p0, (0.2, 0.8)) and near(photo().measures[2].p1, (0.7, 0.8)),
+          'a click does not move it')
+
+
+def check_scale_edit():
+    from k_tools_kanvas.utils import measure as mm
+    mark = photo().measures[3]
+    check(photo().measure_scale_id == mark.measure_id and near(mark.p1, (0.8, 0.9)),
+          f'the scale mark can be edited too {tuple(mark.p1)}')
+    check(abs(mm.meters_per_pixel(photo()) - 1.0 / 240.0) < 2e-5,    # 1 m over the new 240 px
+          f'and the scale follows it {mm.meters_per_pixel(photo())}')
+
+
+def set_scale_now():
+    from k_tools_kanvas.utils import measure as mm
+    mark = photo().measures[3]
+    mm.set_scale(photo(), mark.measure_id, 1.0, 'M')    # 160 px for 1 m
+
+
 def build_actions():
     # The splash screen closes with the first click and swallows it: spend one on a corner
     # of the canvas (empty, so it changes nothing).
@@ -209,6 +282,21 @@ def build_actions():
     actions += [settle, check_scale_mark,
                 lambda: send('ESC', 'PRESS', xy=(state['region'].x + 5, state['region'].y + 5)),
                 settle, check_dialog_dismissed]
+    # --- Editing the marks by their handles (Measure tab open, image selected) ---------
+    actions += [select_for_editing, settle]
+    actions += handle_drag((0.8, 0.6), (0.9, 0.7)) + [settle, check_end_moved]
+    actions += handle_drag((0.2, 0.25), (0.5, 0.55)) + [settle, check_center_moved]
+    actions += handle_drag((0.6, 0.55), (0.7, 0.55)) + [settle, check_edge_moved]
+    actions += handle_drag((0.2, 0.3), (0.1, 0.2), release=False)
+    actions += [lambda: send('ESC', 'PRESS', (0.1, 0.2)), settle, check_edit_cancelled]
+    actions += handle_drag((0.7, 0.7), (0.6, 0.6), shift=True) + [settle, check_shift_corner]
+    # A click that does not drag only selects the mark.
+    actions += [lambda: send('MOUSEMOVE', 'NOTHING', (0.2, 0.8)),
+                lambda: send('LEFTMOUSE', 'PRESS', (0.2, 0.8)),
+                lambda: send('LEFTMOUSE', 'RELEASE', (0.2, 0.8)), settle, check_click_selects]
+    # The mark that is the scale is edited like any other, and the scale follows it.
+    actions += [set_scale_now, settle]
+    actions += handle_drag((0.6, 0.9), (0.8, 0.9)) + [settle, check_scale_edit]
     return actions
 
 

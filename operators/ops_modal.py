@@ -2365,6 +2365,15 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             toggle_collapsed()
             context.area.tag_redraw()
             return {'CANCELLED'}
+        if not (event.ctrl or event.alt):
+            # The marks of the image whose Measure tab is open can be edited by their handles.
+            from ..utils import measure as measure_math
+            hit = measure_math.hit_editable(settings, context.window_manager, mouse, pixel_size)
+            if hit is not None:
+                item_id, measure_id, part = hit
+                bpy.ops.kanvas.edit_measure('INVOKE_DEFAULT', item_id=item_id,
+                                            measure_id=measure_id, part=part)
+                return {'CANCELLED'}
         gradient_result = self._start_gradient_gesture(context, settings, mouse, pixel_size)
         if gradient_result is not None:
             return gradient_result

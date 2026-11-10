@@ -51,6 +51,8 @@ def draw_marks(layout, settings, item):
     buttons = row.column(align=True)
     buttons.operator('kanvas.remove_measure', text='', icon='REMOVE')
     buttons.operator('kanvas.clear_measures', text='', icon='TRASH')
+    if len(item.measures):
+        layout.label(text='Drag the handles on the canvas to edit')
     row = layout.row(align=True)
     for kind, label, icon in (('LINE', 'Line', 'ADD'), ('RECT', 'Rectangle', 'ADD')):
         tool = row.operator('kanvas.measure_tool', text=label, icon=icon)

@@ -94,6 +94,78 @@ try:
     middle = m.mark_label_point(item, item.measures[0])
     assert abs(middle[0]) < 1e-9 and abs(middle[1]) < 1e-9, middle   # the line crosses the center
 
+    # --- Editing marks: handles, what a click finds, moving each part --------------------
+    # The image is 400 x 200 at the origin, 1 canvas unit a pixel: UV (u, v) is at
+    # ((u - 0.5) * 400, (v - 0.5) * 200). Mark 0 is the line (0.25, 0.5)-(0.75, 0.5), mark 1
+    # the rectangle (0.1, 0.2)-(0.3, 0.6).
+    line_mark, rect_mark = item.measures[0], item.measures[1]
+
+    def found(point):
+        hit = m.hit_mark(item, point, 1.0)
+        return None if hit is None else (hit[0].measure_id, hit[1])
+
+    assert found((-100.0, 0.0)) == (line_id, 'P0') and found((100.0, 0.0)) == (line_id, 'P1')
+    assert found((0.0, 0.0)) == (line_id, 'CENTER') and found((50.0, 3.0)) == (line_id, 'CENTER'), 'the line moves'
+    assert found((-160.0, -60.0)) == (rect_id, 'CORNER_00'), found((-160.0, -60.0))
+    assert found((-80.0, 20.0 - 40.0)) == (rect_id, 'EDGE_X1'), found((-80.0, -20.0))
+    assert found((-120.0, -20.0)) == (rect_id, 'CENTER'), 'the middle of a rectangle'
+    assert found((-160.0, -20.0)) == (rect_id, 'EDGE_X0') and found((-120.0, -60.0)) == (rect_id, 'EDGE_Y0')
+    assert found((-120.0, 20.0)) == (rect_id, 'EDGE_Y1')
+    assert found((300.0, 300.0)) is None and found((-140.0, -30.0)) is None, 'inside is not a handle'
+    assert found((-100.0, 40.0)) is None
+    assert found((-100.0, 1.0)) == (line_id, 'P0')
+    assert m.hit_mark(item, (-100.0, 1.0), 0.05) is None, 'a handle is a size on screen: zoomed in it is small'
+    rect_mark.visible = False
+    assert found((-160.0, -60.0)) is None, 'a hidden mark is not found'
+    rect_mark.visible = True
+    assert [part for part, _ in m.mark_handles(item, line_mark)] == ['P0', 'P1', 'CENTER']
+    assert len(m.mark_handles(item, rect_mark)) == 5 and len(m.mark_edges(item, rect_mark)) == 4
+
+    start0, start1 = tuple(line_mark.p0), tuple(line_mark.p1)
+    m.apply_part(line_mark, 'P1', start0, start1, (0.75, 0.5), (0.9, 0.7))
+    assert tuple(round(v, 5) for v in line_mark.p1) == (0.9, 0.7) and tuple(line_mark.p0) == start0
+    m.apply_part(line_mark, 'CENTER', start0, start1, (0.5, 0.5), (0.6, 0.6))
+    assert abs(line_mark.p0[0] - 0.35) < 1e-6 and abs(line_mark.p1[1] - 0.6) < 1e-6, 'moved by the drag'
+    m.apply_part(line_mark, 'CENTER', start0, start1, (0.5, 0.5), (2.0, 2.0))
+    assert abs(line_mark.p1[0] - 1.0) < 1e-6 and abs(line_mark.p1[1] - 1.0) < 1e-6, 'kept inside the image'
+    m.apply_part(line_mark, 'P0', start0, start1, (0.25, 0.5), start0)
+    m.apply_part(line_mark, 'P1', start0, start1, (0.75, 0.5), start1)
+    rect0, rect1 = tuple(rect_mark.p0), tuple(rect_mark.p1)
+    m.apply_part(rect_mark, 'CORNER_10', rect0, rect1, (0.3, 0.2), (0.35, 0.1))
+    assert abs(rect_mark.p1[0] - 0.35) < 1e-6 and abs(rect_mark.p0[1] - 0.1) < 1e-6
+    assert abs(rect_mark.p0[0] - 0.1) < 1e-6 and abs(rect_mark.p1[1] - 0.6) < 1e-6, 'the other sides stay'
+    m.apply_part(rect_mark, 'EDGE_X1', rect0, rect1, (0.3, 0.4), (0.5, 0.9))
+    assert abs(rect_mark.p1[0] - 0.5) < 1e-6 and abs(rect_mark.p1[1] - 0.6) < 1e-6 and abs(rect_mark.p0[1] - 0.2) < 1e-6
+    m.apply_part(rect_mark, 'EDGE_Y0', rect0, rect1, (0.2, 0.2), (0.0, 0.0))
+    assert abs(rect_mark.p0[1]) < 1e-6 and abs(rect_mark.p0[0] - 0.1) < 1e-6
+    m.apply_part(rect_mark, 'CENTER', rect0, rect1, (0.2, 0.4), (0.95, 0.9))
+    assert (abs(rect_mark.p1[0] - 1.0) < 1e-6 and abs(rect_mark.p0[0] - 0.8) < 1e-6
+            and abs(rect_mark.p1[1] - 1.0) < 1e-6), 'a rectangle moved to the corner of the image'
+    m.apply_part(rect_mark, 'CORNER_00', rect0, rect1, (0.1, 0.2), rect0)
+    m.apply_part(rect_mark, 'CORNER_11', rect0, rect1, (0.3, 0.6), rect1)
+    assert m.opposite_point('P0', (0.1, 0.2), (0.3, 0.6)) == (0.3, 0.6)
+    assert m.opposite_point('CORNER_10', (0.1, 0.2), (0.3, 0.6)) == (0.1, 0.6)
+    assert m.opposite_point('CORNER_01', (0.1, 0.2), (0.3, 0.6)) == (0.3, 0.2)
+    assert m.opposite_point('CENTER', (0.1, 0.2), (0.3, 0.6)) is None
+
+    # Only the selected active image, with the Measure tab open, shows its handles.
+    wm = bpy.context.window_manager
+    settings.active_image_index = 0
+    item.is_selected = True
+    wm.kanvas_tabs.image = 'MEASURE'
+    assert m.editing_item(settings, wm) is not None
+    assert m.hit_editable(settings, wm, (-100.0, 0.0), 1.0) == ('photo', line_id, 'P0')
+    wm.kanvas_tabs.image = 'MAIN'
+    assert m.editing_item(settings, wm) is None and m.hit_editable(settings, wm, (-100.0, 0.0), 1.0) is None
+    wm.kanvas_tabs.image = 'MEASURE'
+    item.is_selected = False
+    assert m.editing_item(settings, wm) is None, 'not selected'
+    item.is_selected = True
+    item.measure_visible = False
+    assert m.editing_item(settings, wm) is None, 'marks hidden'
+    item.measure_visible = True
+    wm.kanvas_tabs.image = 'MAIN'
+
     # --- Real size of a picture in the 3D View -------------------------------------------
     # 400 px wide, 0.005 m a pixel: 2 meters.
     assert abs(m.real_size_meters(item, 400.0) - 2.0) < 1e-12

@@ -180,6 +180,94 @@ class KANVAS_OT_DrawMeasure(KanvasTreeOnly, bpy.types.Operator):
         self._discard(context)
 
 
+class KANVAS_OT_EditMeasure(KanvasTreeOnly, bpy.types.Operator):
+    """Drag a handle of a mark: an end, a corner, a side, or the middle to move it all.
+    Started by a click on the handle while the Measure tab is open."""
+    bl_idname = 'kanvas.edit_measure'
+    bl_label = 'Edit Mark'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    item_id: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+    measure_id: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+    part: bpy.props.StringProperty(options={'SKIP_SAVE'})  # type: ignore
+
+    def invoke(self, context, event):
+        from .ops_arrow import _canvas_point
+        item = _item(get_settings(context), self.item_id)
+        mark = mm.find_mark(item, self.measure_id) if item is not None else None
+        point = _canvas_point(context, event)
+        if mark is None or point is None or not item.image_data:
+            return {'CANCELLED'}
+        uv = mm.canvas_to_uv(item, point)
+        if uv is None:
+            return {'CANCELLED'}
+        self.start_p0, self.start_p1 = tuple(mark.p0), tuple(mark.p1)
+        self.start_uv = _clamp_uv(uv)
+        self.start_mouse = (event.mouse_region_x, event.mouse_region_y)
+        self.moved = False
+        item.measure_active_index = list(item.measures).index(mark)
+        context.workspace.status_text_set(
+            'Edit mark: drag  |  Shift: keep it straight or square  |  Esc: cancel')
+        context.window_manager.modal_handler_add(self)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _mark(self, context):
+        item = _item(get_settings(context), self.item_id)
+        return item, (mm.find_mark(item, self.measure_id) if item is not None else None)
+
+    def _restore(self, context):
+        item, mark = self._mark(context)
+        if mark is not None:
+            mark.p0, mark.p1 = self.start_p0, self.start_p1
+
+    def _end(self, context, result):
+        context.workspace.status_text_set(None)
+        context.area.tag_redraw()
+        return result
+
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._restore(context)
+            return self._end(context, {'CANCELLED'})
+        if event.type == 'MOUSEMOVE':
+            from .ops_arrow import _canvas_point
+            item, mark = self._mark(context)
+            point = _canvas_point(context, event)
+            if item is None or mark is None or point is None:
+                return {'RUNNING_MODAL'}
+            if not self.moved:
+                here = (event.mouse_region_x, event.mouse_region_y)
+                if math.dist(self.start_mouse, here) < MIN_DRAG_PIXELS:
+                    return {'RUNNING_MODAL'}     # a click that only selects the mark
+                self.moved = True
+            uv = mm.canvas_to_uv(item, point)
+            if uv is not None:
+                uv = _clamp_uv(uv)
+                anchor = mm.opposite_point(self.part, self.start_p0, self.start_p1)
+                if event.shift and anchor is not None:
+                    uv = _constrained(item, anchor, uv, 'RECT' if self.part.startswith('CORNER')
+                                      else 'LINE')
+                mm.apply_part(mark, self.part, self.start_p0, self.start_p1, self.start_uv, uv)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            item, mark = self._mark(context)
+            if item is None or mark is None or not self.moved:
+                return self._end(context, {'CANCELLED'})
+            size = mm.mark_pixels(item, mark)
+            if (size if mark.kind == 'LINE' else min(size)) < 1.0:
+                self._restore(context)
+                self.report({'INFO'}, 'The mark would have no size')
+                return self._end(context, {'CANCELLED'})
+            return self._end(context, {'FINISHED'})
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        self._restore(context)
+        context.workspace.status_text_set(None)
+
+
 class KANVAS_OT_SetMeasureScale(KanvasTreeOnly, bpy.types.Operator):
     bl_idname = 'kanvas.set_measure_scale'
     bl_label = 'Set Scale'
