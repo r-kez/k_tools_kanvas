@@ -544,6 +544,25 @@ def update_measure(self, context):
         context.area.tag_redraw()
 
 
+_UNIT_IDS = [unit[0] for unit in measure_units.UNIT_ITEMS]
+
+
+def _get_known_unit(self):
+    # The same key the plain enum used, so marks saved before this still read.
+    return self.get('known_unit', _UNIT_IDS.index('CM'))
+
+
+def _set_known_unit(self, index):
+    """Choosing another unit converts the value, so the real size stays the same: 66 cm
+    becomes 0.66 m, not 66 m. (Assigning the unit and then a value, as `set_scale` does,
+    gives the value the caller meant.)"""
+    old = self.get('known_unit', _UNIT_IDS.index('CM'))
+    self['known_unit'] = index
+    if index != old and 0 <= old < len(_UNIT_IDS) and 0 <= index < len(_UNIT_IDS):
+        meters = self.known_value * measure_units.UNITS[_UNIT_IDS[old]]
+        self.known_value = meters / measure_units.UNITS[_UNIT_IDS[index]]
+
+
 class KanvasMeasure(bpy.types.PropertyGroup):
     """A mark on an image: a line or a rectangle, in image coordinates. One mark of an
     image can be its scale (`KanvasImageItem.measure_scale_id`)."""
@@ -563,10 +582,14 @@ class KanvasMeasure(bpy.types.PropertyGroup):
     # Used only by the mark that is the scale of its image.
     known_value: bpy.props.FloatProperty(  # type: ignore
         name='Real Size', description='How big this mark really is',
-        default=1.0, min=0.0001, soft_max=10000.0, precision=3, update=update_measure)
+        default=1.0, min=1e-9, soft_min=0.0001, soft_max=10000.0, precision=3,
+        update=update_measure)
     known_unit: bpy.props.EnumProperty(  # type: ignore
-        name='Unit', description='Unit of the real size',
-        items=measure_units.UNIT_ITEMS, default='CM', update=update_measure)
+        name='Unit',
+        description=('Unit of the real size. Changing it converts the value, so the real size '
+                     'stays the same'),
+        items=measure_units.UNIT_ITEMS, default='CM', get=_get_known_unit,
+        set=_set_known_unit, update=update_measure)
     known_side: bpy.props.EnumProperty(  # type: ignore
         name='Side', description='Which size of the mark the real size is given for',
         items=measure_units.SIDE_ITEMS, default='LENGTH', update=update_measure)

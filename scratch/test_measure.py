@@ -64,6 +64,33 @@ try:
     assert not m.is_calibrated(item) and m.mark_text(item, item.measures[0], 'CM') == '200 px'
     assert m.set_scale(item, line_id, 1.0, 'M')
 
+    # --- Choosing another unit converts the value: the real size stays the same ----------
+    mark = item.measures[0]
+    assert m.set_scale(item, line_id, 66.0, 'CM') and mark.known_unit == 'CM'
+    base = m.meters_per_pixel(item)
+    for unit, shown in (('M', 0.66), ('MM', 660.0), ('IN', 25.9842519685), ('FT', 2.16535433),
+                        ('CM', 66.0)):
+        mark.known_unit = unit
+        assert abs(mark.known_value - shown) < 1e-4 * max(1.0, shown), (unit, mark.known_value)
+        assert abs(m.meters_per_pixel(item) - base) < 1e-7 * base, (unit, m.meters_per_pixel(item))
+        assert m.scale_mark(item).measure_id == line_id, 'the scale is still there'
+    for _ in range(40):                       # many round trips do not drift
+        for unit in ('M', 'IN', 'MM', 'FT', 'CM'):
+            mark.known_unit = unit
+    assert abs(mark.known_value - 66.0) < 1e-3 and abs(m.meters_per_pixel(item) - base) < 1e-6 * base
+    mark.known_unit = 'M'
+    mark.known_value = 2.0                    # typing a value in the unit shown is that value
+    assert abs(m.meters_per_pixel(item) - 2.0 / 200.0) < 1e-9 * 100
+    assert m.set_scale(item, line_id, 1.0, 'M'), 'set_scale gives the value it was given'
+    assert abs(m.meters_per_pixel(item) - 0.005) < 1e-9
+    assert m.set_scale(item, line_id, 5.0, 'FT') and abs(m.meters_per_pixel(item) - 5 * 0.3048 / 200) < 1e-7
+    # A scale of a fraction of a millimeter is kept and read.
+    assert m.set_scale(item, line_id, 0.05, 'MM') and mark.known_value > 0.04
+    mark.known_unit = 'M'
+    assert abs(mark.known_value - 0.00005) < 1e-8 and m.is_calibrated(item), 'not clamped'
+    assert m.scale_text(item).startswith('1 px = ') and m.scale_text(item) != '1 px = 0 m', m.scale_text(item)
+    assert m.set_scale(item, line_id, 1.0, 'M')
+
     # --- Text: units and rounding ------------------------------------------------------------
     assert m.format_length(0.66, 'CM') == '66 cm' and m.format_length(0.0123, 'MM') == '12.3 mm'
     assert m.format_length(2.5, 'M') == '2.5 m' and m.format_length(1234.5, 'MM') == '1234500 mm'

@@ -975,8 +975,8 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
                 copied_mark.p0 = tuple(mark.p0)
                 copied_mark.p1 = tuple(mark.p1)
                 copied_mark.visible = mark.visible
+                copied_mark.known_unit = mark.known_unit      # before the value: see set_scale
                 copied_mark.known_value = mark.known_value
-                copied_mark.known_unit = mark.known_unit
                 copied_mark.known_side = mark.known_side
             new_img.markup_visible = source.markup_visible
             new_img.markup_tool = source.markup_tool

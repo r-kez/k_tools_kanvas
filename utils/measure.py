@@ -112,7 +112,11 @@ def set_scale(item, measure_id, value, unit, side=None):
     side = valid_side(mark.kind, side or default_side(mark.kind))
     if side_pixels(item, mark, side) < 1e-6:
         return False
-    mark.known_value, mark.known_unit, mark.known_side = value, unit, side
+    # The unit first: choosing a unit converts the value the mark already has, and the
+    # value that follows is the one meant.
+    mark.known_unit = unit
+    mark.known_value = value
+    mark.known_side = side
     item.measure_scale_id = measure_id
     return True
 
@@ -139,6 +143,9 @@ def is_calibrated(item):
 # --- Reading marks as text -----------------------------------------------------------------
 
 def _number(value, places=2):
+    if value != 0.0 and abs(value) < 10.0 ** -places:
+        text = f'{value:.3g}'          # a very small size keeps its significant digits
+        return text
     text = f'{value:.{places}f}'
     if '.' in text:
         text = text.rstrip('0').rstrip('.')   # only the zeros after the point

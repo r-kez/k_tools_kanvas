@@ -66,7 +66,7 @@ To give an image a scale, mark something whose real size you know:
 
 The mark turns amber and gets a pin. The panel shows the result, such as `1 px = 0.3667 cm`. Every other mark of the image now reads in real units.
 
-You can also pick any existing mark in the list and click **Use Active Mark as Scale**. To change the real size afterwards, edit the value and unit under **Scale**. **Clear Scale** takes the scale off (the marks go back to pixels). Removing the scale mark does the same.
+You can also pick any existing mark in the list and click **Use Active Mark as Scale**. To change the real size afterwards, edit the value under **Scale**. Choosing another **unit** there converts the value instead of relabeling it: 66 cm becomes 0.66 m, then 660 mm, and the scale stays the same however many times you switch. To say that the real size is different, type a new value. **Clear Scale** takes the scale off (the marks go back to pixels). Removing the scale mark does the same.
 
 Each image has one scale. Two copies of the same picture can have different ones.
 

@@ -190,6 +190,7 @@ Nada abaixo está implementado. Cada item precisa de um plano curto antes de mex
   - [ ] **Match Real Scale** no quadro: selecionar várias imagens calibradas e igualar a escala delas (duas referências de carro lado a lado em proporção real).
   - [x] Editar as marcas no canvas (2026-11-10): com a aba Measure aberta e a imagem selecionada, alças nas pontas, cantos e no meio; arrastar uma ponta ou canto, um lado do retângulo ou o corpo; `Shift` alinha/quadra, `Esc` restaura; a marca da escala também (a escala acompanha). Falta realçar a alça sob o mouse e um atalho para apagar a marca sob o cursor.
   - [ ] Copiar a escala de uma imagem para outra (mesma câmera, mesma distância) e mostrar a escala em Copy/Paste Style.
+  - [x] Trocar a unidade da escala converte o valor (66 cm vira 0,66 m, 660 mm...) em vez de só renomear: antes, 66 cm virava 66 m em silêncio e a escala se perdia; agora o tamanho real não muda e o ciclo cm → m → mm → in → ft → cm volta exato. Valores muito pequenos não são mais cortados em 0,0001 e a leitura mostra os dígitos significativos.
   - [ ] Escala em dois eixos (largura e altura conhecidas) como correção de proporção; deve nascer junto da **Correção de perspectiva**, que também define o plano onde a escala vale.
   - [ ] Cotas no 3D: mostrar na View 3D o tamanho real de uma marca sobre a referência; e exportar as marcas (SVG/CSV).
 - [ ] **P2 — Correção de perspectiva** (ideia de 2026-11-10): o usuário marca onde deveria haver um retângulo (uma parede, uma folha, uma tela) e o Kanvas endireita a imagem.
@@ -204,6 +205,16 @@ Nada abaixo está implementado. Cada item precisa de um plano curto antes de mex
 - [ ] **P3 — Etiquetas e filtros:** marcar imagens e cartões (por exemplo “personagem”, “ambiente”) e filtrar a lista e o canvas por etiqueta, com cores opcionais.
 
 ### Refinamentos e robustez
+
+- [ ] **P3 — Preto e branco por imagem** (ideia de 2026-11-10, analisar): hoje **Grayscale** (`value_gray`) serve para conferir valores e usa a luma de Rec. 709 sobre a cor já codificada em sRGB; a conversão perde a relação entre as cores (um vermelho e um verde de mesma luma viram o mesmo cinza). Um **Black and White** de verdade preserva os valores da imagem como o fotógrafo espera.
+  - Modos a comparar: **Luma** (o atual), **Luminância linear** (linearizar antes de pesar os canais, o físico correto), **Lightness do OKLab** (L, a mais perceptual, combina com a ideia de gradientes em OKLab) e **mistura de canais** com filtros prontos (Neutro, Vermelho, Amarelo, Verde, Azul, Alto contraste) e pesos editáveis; depois, um mixer por faixa de matiz (vermelhos, amarelos, verdes, ciclos, azuis, magentas) como no Lightroom.
+  - Onde: um menu ao lado de Grayscale na aba Adjust (Off / Grayscale / Black and White), no mesmo ponto do shader onde `value_mode` já age, sem custo extra de memória; vale para canvas, export, overlay e referência ao vivo; as imagens que já usam Grayscale continuam iguais.
+  - A decidir: aplicar antes ou depois de brilho, contraste e saturação (hoje o Grayscale vem depois); se o P&B respeita o tint da imagem; e se entra no Copy/Paste Style.
+- [ ] **P3 — Amostragem (Sampling) por imagem** (ideia de 2026-11-10, analisar): permitir que uma imagem use **Nearest Neighbor** (pixel art, sprites, texturas, conferir pixels de perto) em vez da interpolação linear de hoje.
+  - Propriedade do item (`sampling`: Linear, Nearest; depois, quem sabe, Cúbica) e um controle na aba Image ou Adjust. O mesmo arquivo pode estar em dois itens com amostragens diferentes: a textura da GPU é uma só por imagem, então o filtro (`GPUTexture.filter_mode`, e o mipmap com `mipmap_mode`) é ajustado em cada desenho e restaurado, sem duplicar memória.
+  - Com Nearest, desligar o mipmap ao ampliar e manter ao reduzir, para não cintilar com zoom afastado; conferir máscara e markup (texturas à parte, com filtro linear, ficam bordas suaves sobre pixels duros) e a opção Mask Resolution.
+  - Respeitar a escolha no export (ampliar com Nearest mantém os pixels quadrados) e no overlay e na referência ao vivo do 3D; a referência salva como arquivo de imagem pode usar `interpolation` do Empty quando existir, senão reamostrar na exportação.
+  - Mostrar no cartão de comparação e no Copy/Paste Style.
 
 - [ ] **P3 — Gradientes perceptuais (OKLab)** (ideia de 2026-11-10, analisar): interpolar as cores dos gradientes em OKLab em vez de RGB, para transições sem o "meio acinzentado" (azul → amarelo em RGB passa por um cinza; em OKLab mantém a luminosidade e a saturação).
   - Encaixe barato: a rampa já é amostrada em Python (`ColorRamp.evaluate` em `utils/shape_gradient.py`, 256 cores numa textura). Basta amostrar as paradas da rampa e interpolar entre elas em OKLab (sRGB linear → LMS → raiz cúbica → Lab e volta). O shader não muda.
