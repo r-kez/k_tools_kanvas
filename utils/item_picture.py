@@ -169,13 +169,13 @@ def is_picture_item(item):
 # --- Rendering -------------------------------------------------------------------------
 
 def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=False,
-                keep_stretch=False):
+                keep_stretch=False, bit_depth=8):
     """The picture as a NumPy array (height, width, 4) of uint8, straight alpha, top
     row first (ready for PNG). `scale` is output pixels per image pixel. Full opacity:
     the item's opacity on the board is left out. `keep_stretch` keeps the item's stretch
     and shear (a sheared image comes out as a slanted shape with clear corners). Raises
     ValueError when the mask hides everything or the picture would be larger than
-    MAX_SIDE."""
+    MAX_SIDE. `bit_depth` 16 gives a uint16 picture (see `board_render._render_tile`)."""
     import numpy as np
     from mathutils import Matrix
     from .item_geometry import item_bounds
@@ -205,7 +205,7 @@ def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=Fal
     stretch = min(math.hypot(m00, m10), math.hypot(m01, m11))
     pixel_size = max(1e-9, stretch / scale)   # canvas units under one output pixel
 
-    picture = np.zeros((height, width, 4), dtype=np.uint8)
+    picture = np.zeros((height, width, 4), dtype=np.uint16 if bit_depth == 16 else np.uint8)
     item_id = item.item_id
     saved = (item.opacity, item.markup_visible)
     with _isolated(settings, ([item], [])):
@@ -218,9 +218,9 @@ def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=Fal
                 projection = Matrix(((2.0 / w, 0, 0, -1 - 2.0 * left / w),
                                      (0, 2.0 / h, 0, -1 - 2.0 * bottom / h),
                                      (0, 0, 1, 0), (0, 0, 0, 1)))
-                data = _render_tile(settings, None, 0, view_bounds, pixel_size, w, h,
-                                    (0.0, 0.0, 0.0, 0.0), projection, model, labels=False)
-                picture[y:y + h, x:x + w] = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 4)
+                picture[y:y + h, x:x + w] = _render_tile(
+                    settings, None, 0, view_bounds, pixel_size, w, h, (0.0, 0.0, 0.0, 0.0),
+                    projection, model, labels=False, bit_depth=bit_depth)
         finally:
             item = next(i for i in settings.images if i.item_id == item_id)
             item.opacity, item.markup_visible = saved

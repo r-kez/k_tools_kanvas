@@ -153,6 +153,38 @@ def run():
     check(size == (400, 200), f'exported size {size}')
     print(f'GUIPICTURE cropped {width} x {height}')
 
+    # --- 16 bits a channel: a smooth gradient keeps far more than 256 steps ------------
+    ramp = bpy.data.images.new('ramp', 2048, 4, alpha=True, float_buffer=True)
+    values = np.zeros((4, 2048, 4), dtype=np.float32)
+    values[..., 0] = values[..., 1] = values[..., 2] = np.linspace(0.0, 1.0, 2048)[None, :]
+    values[..., 3] = 1.0
+    ramp.pixels.foreach_set(values.ravel())
+    gradient = settings.images.add()
+    gradient.item_type, gradient.item_id, gradient.name = 'IMAGE', 'ramp', 'Ramp'
+    gradient.image_data = ramp
+    gradient = next(i for i in settings.images if i.item_id == 'ramp')
+    eight = ip.render_item(settings, gradient)
+    sixteen = ip.render_item(settings, gradient, bit_depth=16)
+    check(eight.dtype == np.uint8 and sixteen.dtype == np.uint16, f'types {eight.dtype} {sixteen.dtype}')
+    steps8, steps16 = len(np.unique(eight[2, :, 0])), len(np.unique(sixteen[2, :, 0]))
+    check(steps8 <= 256 and steps16 > 1000, f'gradient steps: 8 bits {steps8}, 16 bits {steps16}')
+    check(abs(int(sixteen[2, 1024, 0]) / 257.0 - int(eight[2, 1024, 0])) < 1.5,
+          'the same color in both depths')
+    with bpy.context.temp_override(window=window, area=area, region=region, space_data=space):
+        for item in settings.images:
+            item.is_selected = item.item_id == 'ramp'
+        settings.active_image_index = next(i for i, item in enumerate(settings.images)
+                                           if item.item_id == 'ramp')
+        path16 = os.path.join(folder, 'ramp16.png')
+        result = bpy.ops.kanvas.export_board_image(filepath=path16, scope='IMAGE', margin=4,
+                                                   background='COLOR', bit_depth='16')
+    check(result == {'FINISHED'}, f'16-bit export {result}')
+    loaded = bpy.data.images.load(path16)
+    # Blender reads a 16-bit PNG into a float buffer (an 8-bit one has depth 32).
+    check(tuple(loaded.size) == (2056, 12) and loaded.depth > 32 and loaded.is_float,
+          f'16-bit PNG read back {tuple(loaded.size)} depth {loaded.depth}')
+    print(f'GUIPICTURE gradient steps 8: {steps8}, 16: {steps16}')
+
 
 def tick():
     try:

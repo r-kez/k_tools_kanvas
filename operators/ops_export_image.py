@@ -108,6 +108,13 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         name='Color Markup',
         description='Paint the color markup of the image over it, as on the canvas',
         default=False)
+    bit_depth: bpy.props.EnumProperty(  # type: ignore
+        name='Color Depth',
+        description='Bits per channel of the PNG',
+        items=(('8', '8', '8 bits a channel: smaller files'),
+               ('16', '16', '16 bits a channel: smooth gradients and adjustments, for '
+                'painting or compositing further')),
+        default='8')
     load_image: bpy.props.BoolProperty(  # type: ignore
         name='Load into Blender',
         description=('Also add the picture to this file as a packed Blender image, for use '
@@ -178,6 +185,7 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         layout.prop(self, 'background')
         if self.background == 'COLOR':
             layout.prop(self, 'color', text='')
+        layout.row().prop(self, 'bit_depth', expand=True)
         layout.prop(self, 'load_image')
 
     def _pixels_per_unit(self, context):
@@ -208,7 +216,8 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
             # Annotations belong to no item: a picture of the selection leaves them out.
             picture = render(settings, rect, scale, self.margin, background,
                              space=None if only else context.space_data,
-                             frame_number=context.scene.frame_current, only=only)
+                             frame_number=context.scene.frame_current, only=only,
+                             bit_depth=int(self.bit_depth))
             write_png(path, picture)
         except Exception as exc:
             self.report({'ERROR'}, f'Could not export the picture: {exc}')
@@ -233,7 +242,8 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         path = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), '.png')
         try:
             picture = render_item(settings, item, self.scale, self.crop_to_mask,
-                                  self.include_markup, self.keep_stretch)
+                                  self.include_markup, self.keep_stretch,
+                                  int(self.bit_depth))
             picture = framed(picture, self.margin, self._background())
             write_png(path, picture)
         except Exception as exc:
@@ -267,20 +277,21 @@ def _only_image_selected(settings):
 
 
 def framed(picture, margin, background):
-    """`picture` (straight alpha, uint8) with `margin` pixels around it, laid over
-    `background` (RGBA 0..1) as the board export does."""
+    """`picture` (straight alpha, uint8 or uint16) with `margin` pixels around it, laid
+    over `background` (RGBA 0..1) as the board export does."""
     import numpy as np
     height, width = picture.shape[:2]
-    back = np.array([c * 255.0 for c in background], dtype=np.float32)
-    result = np.empty((height + 2 * margin, width + 2 * margin, 4), dtype=np.uint8)
-    result[:] = np.clip(back + 0.5, 0, 255).astype(np.uint8)
+    top = float(np.iinfo(picture.dtype).max)
+    back = np.array([c * top for c in background], dtype=np.float32)
+    result = np.empty((height + 2 * margin, width + 2 * margin, 4), dtype=picture.dtype)
+    result[:] = np.clip(back + 0.5, 0, top).astype(picture.dtype)
     inner = result[margin:margin + height, margin:margin + width]
     if back[3] <= 0:
         inner[:] = picture
         return result
-    alpha = picture[..., 3:4].astype(np.float32) / 255.0
+    alpha = picture[..., 3:4].astype(np.float32) / top
     color = picture[..., :3].astype(np.float32) * alpha + back[:3] * (1.0 - alpha)
     out_alpha = picture[..., 3:4].astype(np.float32) + back[3] * (1.0 - alpha)
-    inner[..., :3] = np.clip(color + 0.5, 0, 255).astype(np.uint8)
-    inner[..., 3:4] = np.clip(out_alpha + 0.5, 0, 255).astype(np.uint8)
+    inner[..., :3] = np.clip(color + 0.5, 0, top).astype(picture.dtype)
+    inner[..., 3:4] = np.clip(out_alpha + 0.5, 0, top).astype(picture.dtype)
     return result

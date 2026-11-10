@@ -16,6 +16,7 @@ Right-click on the canvas and choose **Export Image...**. Pick where to save the
 | **Scale** | Pixels per canvas unit. At 1, items have the size they have on the canvas at 100% zoom; at 2 the picture is twice as sharp. For **View**, 1 is the size of the editor on screen. For **Image**, pixels per image pixel: 1 is the size of the image itself. The resulting size in pixels is shown below. |
 | **Margin** | Empty space around the picture, in pixels |
 | **Background** | **Transparent** (the default) keeps transparency around and through the items. **Canvas** uses the color of the canvas. **Color** uses a color you choose. |
+| **Color Depth** | **8** bits a channel (the default) or **16**. 16 bits keeps smooth gradients and fine adjustments without banding, for painting or compositing further; the file is about twice as large. |
 | **Load into Blender** | Also adds the picture to the `.blend` file as a packed image, ready to use as a texture in a material. Off by default. |
 
 ## What goes into the picture

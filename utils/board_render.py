@@ -143,16 +143,20 @@ def tiles(width, height, tile=TILE):
 # --- Rendering -------------------------------------------------------------------------
 
 def _render_tile(settings, space, frame_number, view_bounds, pixel_size, width, height,
-                 background, projection, model=None, labels=True):
-    """RGBA bytes (premultiplied, bottom row first) of one tile. `projection` maps the
-    tile to clip space; `model` (identity by default) maps the canvas into the space
-    `projection` reads. Labels are drawn in region pixels, so only without a model."""
+                 background, projection, model=None, labels=True, bit_depth=8):
+    """One tile as a (height, width, 4) array, premultiplied, bottom row first: uint8,
+    or uint16 with `bit_depth` 16 (drawn in a half-float buffer, so gradients and
+    adjustments keep their fine steps). `projection` maps the tile to clip space;
+    `model` (identity by default) maps the canvas into the space `projection` reads.
+    Labels are drawn in region pixels, so only without a model."""
     import gpu
+    import numpy as np
     from mathutils import Matrix
     from . import gpu as kanvas_gpu
     from .gpu.gpu_common import begin_draw_pass, end_draw_pass
     region = _Region(width, height, _View2D(view_bounds[0], view_bounds[1], pixel_size))
-    offscreen = gpu.types.GPUOffScreen(width, height, format='RGBA8')
+    offscreen = gpu.types.GPUOffScreen(width, height,
+                                       format='RGBA16F' if bit_depth == 16 else 'RGBA8')
     try:
         with offscreen.bind():
             framebuffer = gpu.state.active_framebuffer_get()
@@ -173,9 +177,16 @@ def _render_tile(settings, space, frame_number, view_bounds, pixel_size, width, 
                         kanvas_gpu.draw_board_labels(settings, region, export=True)
             finally:
                 end_draw_pass()
-            buffer = framebuffer.read_color(0, 0, width, height, 4, 0, 'UBYTE')
-            buffer.dimensions = width * height * 4
-            return bytes(buffer)
+            if bit_depth == 16:
+                buffer = framebuffer.read_color(0, 0, width, height, 4, 0, 'FLOAT')
+                buffer.dimensions = width * height * 4
+                values = np.frombuffer(bytes(buffer), dtype=np.float32)
+                values = np.clip(values * 65535.0 + 0.5, 0, 65535).astype(np.uint16)
+            else:
+                buffer = framebuffer.read_color(0, 0, width, height, 4, 0, 'UBYTE')
+                buffer.dimensions = width * height * 4
+                values = np.frombuffer(bytes(buffer), dtype=np.uint8)
+            return values.reshape(height, width, 4)
     finally:
         offscreen.free()
 
@@ -223,10 +234,11 @@ def _isolated(settings, only=None):
 
 
 def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), space=None,
-           frame_number=0, only=None):
-    """The picture of `rect` as a NumPy array (height, width, 4) of uint8, straight
-    alpha, top row first, ready for PNG. `only` is (items, arrows) to draw alone (see
-    `selection_contents`); the other items are hidden while drawing and come back."""
+           frame_number=0, only=None, bit_depth=8):
+    """The picture of `rect` as a NumPy array (height, width, 4) of uint8 (uint16 with
+    `bit_depth` 16), straight alpha, top row first, ready for PNG. `only` is (items,
+    arrows) to draw alone (see `selection_contents`); the other items are hidden while
+    drawing and come back."""
     import numpy as np
     from mathutils import Matrix
     width, height = output_size(rect, scale, margin)
@@ -235,7 +247,7 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
     pixel_size = 1.0 / scale
     left = rect[0] - margin * pixel_size
     bottom = rect[1] - margin * pixel_size
-    picture = np.zeros((height, width, 4), dtype=np.uint8)
+    picture = np.zeros((height, width, 4), dtype=np.uint16 if bit_depth == 16 else np.uint8)
     with _isolated(settings, only):
         for x, y, w, h in tiles(width, height):
             tile_left, tile_bottom = left + x * pixel_size, bottom + y * pixel_size
@@ -245,37 +257,43 @@ def render(settings, rect, scale, margin=0, background=(0.0, 0.0, 0.0, 0.0), spa
                 (0, 2.0 / span_h, 0, -1 - 2.0 * tile_bottom / span_h),
                 (0, 0, 1, 0), (0, 0, 0, 1)))
             view_bounds = (tile_left, tile_bottom, tile_left + span_w, tile_bottom + span_h)
-            data = _render_tile(settings, space, frame_number, view_bounds, pixel_size, w, h,
-                                background, projection)
-            picture[y:y + h, x:x + w] = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 4)
+            picture[y:y + h, x:x + w] = _render_tile(
+                settings, space, frame_number, view_bounds, pixel_size, w, h, background,
+                projection, bit_depth=bit_depth)
     return unpremultiply(picture[::-1])
 
 
 def unpremultiply(picture):
     """Drawing over a clear buffer leaves colors multiplied by their alpha; PNG wants
-    them straight."""
+    them straight. uint8 or uint16, worked in bands of rows to bound the memory."""
     import numpy as np
-    alpha = picture[..., 3:4].astype(np.float32)
-    color = picture[..., :3].astype(np.float32)
-    safe = np.where(alpha > 0, alpha, 1.0)
-    straight = np.where(alpha > 0, np.clip(color * 255.0 / safe, 0, 255), 0)
+    top = float(np.iinfo(picture.dtype).max)
     result = picture.copy()
-    result[..., :3] = (straight + 0.5).astype(np.uint8)
+    for start in range(0, picture.shape[0], 512):
+        band = picture[start:start + 512]
+        alpha = band[..., 3:4].astype(np.float32)
+        color = band[..., :3].astype(np.float32)
+        safe = np.where(alpha > 0, alpha, 1.0)
+        straight = np.where(alpha > 0, np.clip(color * top / safe, 0, top), 0)
+        result[start:start + 512, :, :3] = (straight + 0.5).astype(picture.dtype)
     return result
 
 
 def write_png(path, picture):
-    """Write a (height, width, 4) uint8 array (top row first) as an RGBA PNG."""
+    """Write a (height, width, 4) array (top row first) as an RGBA PNG: 8 bits a
+    channel for uint8, 16 for uint16."""
     import numpy as np
     height, width = picture.shape[:2]
+    sixteen = picture.dtype == np.uint16
+    data = (picture.astype('>u2').view(np.uint8) if sixteen else picture)
     rows = np.concatenate([np.zeros((height, 1), dtype=np.uint8),
-                           picture.reshape(height, width * 4)], axis=1)
+                           data.reshape(height, -1)], axis=1)
 
     def chunk(kind, data):
         body = kind + data
         return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
 
-    header = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
+    header = struct.pack('>IIBBBBB', width, height, 16 if sixteen else 8, 6, 0, 0, 0)
     with open(path, 'wb') as handle:
         handle.write(b'\x89PNG\r\n\x1a\n')
         handle.write(chunk(b'IHDR', header))
