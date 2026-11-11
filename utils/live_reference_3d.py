@@ -197,6 +197,10 @@ def draw_references():
     entries = live_entries(scene)
     if not entries:
         return
+    from .view_target import shows_here
+    entries = [entry for entry in entries if shows_here(entry, context.area)]
+    if not entries:
+        return
     region_3d = space.region_3d
     from .gpu.gpu_common import value_view_uniforms
     from .item_crop import corrected

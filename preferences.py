@@ -81,7 +81,7 @@ class KanvasPreferences(bpy.types.AddonPreferences):
 
     show_3d_references_panel: bpy.props.BoolProperty(  # type: ignore
         name="3D View References Panel",
-        description=("Show the Kanvas tab in the sidebar of the 3D View, with the reference "
+        description=("Show the References panel in the K-Tools tab of the sidebar of the 3D View, with the reference "
                      "images sent from Kanvas"),
         default=True,
     )

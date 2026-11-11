@@ -11,6 +11,7 @@ from ..utils import live_reference_3d as live
 from ..utils import measure as mm
 from ..utils import overlay_3d
 from ..utils import reference_3d as ref
+from ..utils import view_target
 
 KIND_ITEMS = (
     ('EMPTY', 'Reference Image', 'An image empty in the scene, facing a view'),
@@ -129,6 +130,19 @@ class KanvasReference(bpy.types.PropertyGroup):
     only_camera: bpy.props.BoolProperty(  # type: ignore
         name='Only in Camera View', description='Show the overlay only when looking through the camera',
         default=False, update=_redraw_overlays)
+    # Which 3D View shows an overlay or a live reference (off: every one).
+    limit_view: bpy.props.BoolProperty(  # type: ignore
+        name='Only in View',
+        description='Show this in one 3D View only (off: in every 3D View)',
+        default=False, update=_redraw_overlays)
+    view_id: bpy.props.IntProperty(  # type: ignore
+        name='View', description=('ID of the 3D View that shows it, counted over all windows '
+                                  'from 0 (the same IDs as K-Tools View Sync). Identify Views '
+                                  'shows them'),
+        default=0, min=0, soft_max=8, update=_redraw_overlays)
+    # Where the empty was when it became an overlay, so turning it back puts it there.
+    has_matrix: bpy.props.BoolProperty(default=False)  # type: ignore
+    empty_matrix: bpy.props.FloatVectorProperty(size=16, default=[0.0] * 16)  # type: ignore
     adjusting: bpy.props.BoolProperty(  # type: ignore
         name='Adjust',
         description=('Move the overlay by dragging it in the 3D View, and scale it by its top '
@@ -455,6 +469,67 @@ class KANVAS_OT_MakeReference3DLive(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class KANVAS_OT_ConvertReference3D(bpy.types.Operator):
+    bl_idname = 'kanvas.convert_3d_reference'
+    bl_label = 'Change Type'
+    bl_description = ('Turn a reference image in the scene into an overlay drawn over the view, '
+                      'or an overlay into a reference image at the 3D cursor')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        entry = _entry(context, -1) if getattr(context, 'scene', None) else None
+        return entry is not None and ref.board_item(entry.board, entry.item_id) is not None
+
+    def execute(self, context):
+        entry = _entry(context, -1)
+        scene = context.scene
+        if entry.kind == 'EMPTY':
+            self._to_overlay(entry)
+            scene.kanvas_overlays_hidden = False
+        else:
+            error = self._to_empty(context, entry, scene)
+            if error:
+                self.report({'WARNING'}, error)
+                return {'CANCELLED'}
+        overlay_3d.tag_3d_views()
+        return {'FINISHED'}
+
+    @staticmethod
+    def _to_overlay(entry):
+        obj = entry.object
+        if obj is not None:
+            entry.empty_matrix = [value for row in obj.matrix_world for value in row]
+            entry.has_matrix = True
+            data = obj.data
+            entry.object = None
+            bpy.data.objects.remove(obj)
+            _drop_image(data)
+        entry.kind = 'OVERLAY'
+        entry.live = False
+        entry.real_scale = False
+
+    @staticmethod
+    def _to_empty(context, entry, scene):
+        from mathutils import Matrix
+        try:
+            item, image = _live_placeholder(entry.board, entry)
+        except Exception as exc:
+            return f'Could not make {entry.name} a reference image: {exc}'
+        real = ref.real_size_scene(item, entry, scene)
+        obj = ref.create_empty(context, image, item.name or image.name, entry.view,
+                               scene.cursor.location.copy(), 5.0 if real is None else real,
+                               'DEFAULT', 1.0, False, True)
+        if entry.has_matrix:
+            values = list(entry.empty_matrix)
+            obj.matrix_world = Matrix([values[i:i + 4] for i in range(0, 16, 4)])
+        entry.adjusting = False
+        entry.object, entry.kind, entry.live = obj, 'EMPTY', True
+        entry.defaults_version = ref.DEFAULTS_VERSION
+        entry.real_scale = real is not None
+        return None
+
+
 class _Options:
     """The options `make_picture` reads, for a reference not listed yet."""
 
@@ -603,6 +678,37 @@ class KANVAS_OT_ShowReferenceInKanvas(_ReferenceOperator, bpy.types.Operator):
         with context.temp_override(window=window, area=area, region=region, space_data=space):
             bpy.ops.kanvas.focus_selection()
         area.tag_redraw()
+        return {'FINISHED'}
+
+
+class KANVAS_OT_UseThis3DView(bpy.types.Operator):
+    bl_idname = 'kanvas.use_this_3d_view'
+    bl_label = 'Use This View'
+    bl_description = 'Show the selected reference only in this 3D View'
+
+    @classmethod
+    def poll(cls, context):
+        return (context.area is not None and context.area.type == 'VIEW_3D'
+                and getattr(context, 'scene', None) is not None
+                and _entry(context, -1) is not None)
+
+    def execute(self, context):
+        index = view_target.area_id(context.area)
+        entry = _entry(context, -1)
+        if index is None or entry is None:
+            return {'CANCELLED'}
+        entry.view_id = index
+        entry.limit_view = True
+        return {'FINISHED'}
+
+
+class KANVAS_OT_Identify3DViews(bpy.types.Operator):
+    bl_idname = 'kanvas.identify_3d_views'
+    bl_label = 'Identify Views'
+    bl_description = 'Show the ID of every 3D View for a few seconds'
+
+    def execute(self, context):
+        view_target.flash_ids()
         return {'FINISHED'}
 
 

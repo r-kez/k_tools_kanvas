@@ -8,7 +8,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
 
-from ..utils import overlay_3d
+from ..utils import overlay_3d, view_target
 
 COLOR = (0.3, 0.75, 1.0, 0.9)
 COLOR_HOVER = (1.0, 1.0, 1.0, 1.0)
@@ -22,6 +22,8 @@ def _adjusted(context):
         return None
     for entry in overlay_3d.overlays(scene):
         if entry.adjusting and entry.show:
+            if not view_target.shows_here(entry, context.area):
+                return None
             if entry.fit_camera and overlay_3d.camera_frame(context) is not None:
                 return None
             layout = overlay_3d.entry_layout(context, entry)
@@ -118,7 +120,9 @@ class KANVAS_GGT_overlay_adjust(bpy.types.GizmoGroup):
         scene = getattr(context, 'scene', None)
         return (scene is not None and hasattr(scene, 'kanvas_references')
                 and not scene.kanvas_overlays_hidden
-                and any(entry.adjusting and entry.show for entry in overlay_3d.overlays(scene)))
+                and any(entry.adjusting and entry.show
+                        and view_target.shows_here(entry, context.area)
+                        for entry in overlay_3d.overlays(scene)))
 
     def setup(self, context):
         self.frame = self.gizmos.new(KANVAS_GT_overlay_frame.bl_idname)

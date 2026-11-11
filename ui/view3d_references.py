@@ -1,10 +1,11 @@
-"""The Kanvas tab of the 3D View sidebar: what Kanvas has put in the scene, and the
+"""The K-Tools tab of the 3D View sidebar: what Kanvas has put in the scene, and the
 controls of the active reference."""
 
 import bpy
 
 from ..utils import measure as mm
 from ..utils import reference_3d as ref
+from ..utils import view_target
 
 
 def _prefs(context):
@@ -55,7 +56,7 @@ class KANVAS_PT_References3D(bpy.types.Panel):
     bl_idname = 'KANVAS_PT_references_3d'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Kanvas'
+    bl_category = 'K-Tools'
 
     @classmethod
     def poll(cls, context):
@@ -94,7 +95,7 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
     bl_idname = 'KANVAS_PT_reference_3d_settings'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Kanvas'
+    bl_category = 'K-Tools'
     bl_parent_id = 'KANVAS_PT_references_3d'
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -111,8 +112,13 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False
+        row = layout.row()
+        row.use_property_split = False
+        row.operator('kanvas.convert_3d_reference', icon='ARROW_LEFTRIGHT',
+                     text='Make Reference Image' if entry.kind == 'OVERLAY' else 'Make Overlay')
         if entry.kind == 'OVERLAY':
             self._draw_overlay(layout, entry)
+            self._draw_view(layout, entry)
             return
         obj = entry.object
         item = ref.board_item(entry.board, entry.item_id)
@@ -142,12 +148,25 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
         column.prop(entry, 'keep_stretch', text='Stretch and Shear')
         column.prop(entry, 'include_markup')
         if entry.live:
+            self._draw_view(layout, entry)
             layout.label(text='Live: drawn from the board', icon='LINKED')
             layout.operator('kanvas.bake_3d_reference', icon='FILE_IMAGE')
         else:
             layout.label(text='Image file: update after edits', icon='FILE_IMAGE')
             layout.operator('kanvas.update_3d_reference', icon='FILE_REFRESH')
             layout.operator('kanvas.make_3d_reference_live', icon='LINKED')
+
+    def _draw_view(self, layout, entry):
+        column = layout.column(heading='3D View')
+        column.prop(entry, 'limit_view', text='Only in One View')
+        if not entry.limit_view:
+            return
+        row = column.row(align=True)
+        row.prop(entry, 'view_id')
+        row.operator('kanvas.use_this_3d_view', text='', icon='RESTRICT_SELECT_OFF')
+        row.operator('kanvas.identify_3d_views', text='', icon='INFO')
+        if not view_target.target_exists(entry):
+            column.label(text='No 3D View has this ID', icon='ERROR')
 
     def _draw_overlay(self, layout, entry):
         row = layout.row()

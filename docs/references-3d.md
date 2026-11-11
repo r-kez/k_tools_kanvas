@@ -53,9 +53,9 @@ With several images selected as reference images, each one gets the next view of
 
 The picture is the image as it looks on the board: brightness, contrast, saturation, tint, value view, flips and mask are kept. Its place, rotation, scale and opacity on the board are left out, so the reference is upright and at the image's own resolution.
 
-## The Kanvas tab of the 3D View
+## The K-Tools tab of the 3D View
 
-The **Kanvas** tab of the 3D View sidebar (`N`) lists the references of the scene in the **References** panel.
+The **K-Tools** tab of the 3D View sidebar (`N`) lists the references of the scene in the **References** panel.
 
 - Click a row to select its reference in the scene. The eye shows or hides a reference or an overlay.
 - **Hide Overlays**, above the list, hides every overlay at once; click again to show them.
@@ -70,7 +70,15 @@ A row whose image was deleted from the board is marked **Not on the board**. A r
 
 A reference you delete in the 3D View leaves the list on its own.
 
-To hide the Kanvas tab, turn off **3D View References Panel** in **Preferences > General > Interface**.
+### Choosing the 3D View
+
+By default every 3D View shows your overlays and live references. To show one of them in a single view, select it in the list, open **Settings** and turn on **Only in One View**. Click the pointer button next to **View** while hovering the view you want, or type its ID; the **i** button shows each view's ID in the view for a few seconds. The IDs are counted over all windows from 0, the same as in K-Tools View Sync. Each reference has its own choice, so a silhouette can sit in the camera view and another reference in your second monitor. Reference images saved as image files are objects of the scene, so every view shows them.
+
+### Changing the type
+
+**Make Overlay** at the top of **Settings** turns a reference image into an overlay, and **Make Reference Image** turns an overlay back. The image stays on the board, the list keeps its place, and the picture options carry over. A reference image becoming an overlay is deleted from the scene, but Kanvas remembers where it was: turning it back puts it there. Reference images made from an overlay are live.
+
+To hide the K-Tools tab, turn off **3D View References Panel** in **Preferences > General > Interface**.
 
 ## Placing an overlay
 

@@ -204,6 +204,10 @@ def draw_overlays():
     entries = [entry for entry in overlays(scene) if entry.show]
     if not entries:
         return
+    from .view_target import shows_here
+    entries = [entry for entry in entries if shows_here(entry, context.area)]
+    if not entries:
+        return
     from .gpu.gpu_common import value_view_uniforms
     from .item_crop import corrected
     from .gpu.gpu_image import get_kanvas_texture
