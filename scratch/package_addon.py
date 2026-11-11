@@ -23,7 +23,10 @@ IGNORE_PATTERNS = {
     'TODO.md',
     'scratch',
     'README.md',
-    'RELEASE_NOTES.md'
+    'RELEASE_NOTES.md',
+    'mkdocs.yml',
+    'requirements-docs.txt',
+    'site'
 }
 
 IGNORE_EXTENSIONS = {
