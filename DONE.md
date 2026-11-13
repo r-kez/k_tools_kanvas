@@ -4,6 +4,40 @@ O que já foi feito no Kanvas: o histórico das sessões, os itens concluídos d
 
 # Histórico de sessões
 
+## Sessão de 2026-11-12/13 — Lápis (Pencil Drawing), interface enxuta do editor, checklist e área de transferência
+
+Validado no Blender 5.2 sem interface gráfica (`test_pencil`, `test_pencil_anchor`, `test_node_tools`, `test_node_header`, `test_node_sidebar`, `test_checklist_adopt`, `test_checklist_remove_sync`, `test_clipboard_copy`; a parte que desenha na GPU não roda sem janela). Conferido pelo usuário na janela: antialiasing, box select, G/R/S num traço, borracha parcial, escolha de traço sobre uma imagem. O resto aguarda a conferência, e continua como `[~]` no TODO.
+
+### Feito e conferido
+- **Lápis (Pencil Drawing):** um item `Pencil Drawing` (forma com `shape_kind == 'PENCIL'`) guarda todos os traços (pontos x, y e pressão em float32 base64, cor e largura por traço); ferramenta **Pencil** na barra T, `E` volta a desenhar num desenho, pressão da mesa, suavização própria. Código em `utils/pencil.py`, `operators/ops_pencil.py`, `ui/tabs/pencil_main.py`.
+- **Antialiasing dos traços:** franja de alfa de 1 pixel em volta de cada traço (`stroke_outline`, `_fringe_batch`), refeita quando o zoom muda; opção **Antialiasing** no painel, ligada por padrão. As pontas arredondadas passaram de 10 para 24 lados (`CAP_SEGMENTS`) para sumirem as facetas.
+- **Box select de traços:** o Ctrl+clique virou um modal curto (vive só com o botão apertado): sem arrastar, escolhe o traço; arrastando, desenha a caixa e escolhe os traços que ela toca (`pencil.strokes_in_rect`, Liang-Barsky, a espessura conta). Shift soma.
+- **Mover, girar e escalar um traço:** G, R e S sobre os traços escolhidos (`KANVAS_OT_PencilTransform`, modal curto, Ctrl com snap, Esc cancela); a caixa do desenho se refaz a cada passo e o S escala também a largura. A conta da caixa passou a considerar a espessura de cada traço.
+- **Borracha parcial:** ferramenta **Eraser** na barra T e **Alt+arrastar** com o Pencil; apaga só onde o círculo passa, cortando o traço em pedaços (cada pedaço é um traço com a mesma cor, largura e escolha, no mesmo lugar da pilha; a pressão acompanha) (`pencil.erase_parts`). Tamanho em pixels de tela. Desenho sem traços sai do board.
+- **Clique num desenho:** `hit_shape` passou a acertar o desenho só perto dos traços, então a parte vazia da caixa não bloqueia a imagem embaixo e um traço sobre uma imagem é escolhido com um clique.
+- **Correção:** `shape_geometry.bounds` devolvia um ponto para o desenho do lápis (sem contorno de vértices); agora usa a caixa do desenho.
+
+### Feito, esperando a conferência na janela
+- **Ctrl+A / Ctrl+I nos traços** (as teclas dos vértices; o A é a seta rápida): escolher todos, alternar, inverter.
+- **Preso à imagem:** o desenho nasce preso à imagem sob o primeiro traço (**Stick to Image**, ligado por padrão; Shift+arrastar desenha solto) e acompanha mover, girar e escalar; botões **Stick to Image** e **Detach**. `utils/pencil_anchor.py` guarda a pose relativa e `sync` a reaplica a cada desenho da tela, sem ganchos em cada transformação; mexer no desenho refaz a âncora. Só carrega mover, girar e escala uniforme (não o esticar, o shear nem o flip).
+- **Export Image e Copy to Clipboard:** com um desenho selecionado geram o desenho sozinho, com fundo transparente; os desenhos presos a uma imagem entram na exportação e na cópia dela (opção **Pencil Drawings**).
+- **Controles da caneta:** **Pressure** (liga e desliga), **Minimum Size** e **Response** (curva), aplicados na hora de gravar o traço (`pencil.apply_pressure`); a prévia ao vivo usa a mesma conta e os traços antigos não mudam.
+- **Marca ao lado do cursor:** o Pencil mostra um lápis com o anel da largura na cor do traço, o Eraser mostra o círculo do tamanho real (também ao passar o mouse); `kanvas.pencil_cursor` é um operador de um tiro no MOUSEMOVE e no Alt da ferramenta, sem modal parado.
+- **Seletor Edit/Move:** sai do topo do painel Kanvas (continua no header); a opção **Edit/Move Switch in the Panel** nas preferências o devolve ao painel.
+
+### Feito antes e que não tinha sido registrado
+- **Editor enxuto num quadro Kanvas:** header (`ui/node_header.py`), barra lateral só com painéis K-Tools (`ui/node_sidebar.py`) e barra de ferramentas T só com ferramentas `kanvas.*` (`ui/node_tools.py`, Edit e as do lápis), cada um com a preferência **Simplified Editor Header / Sidebar / Toolbar** para voltar ao do Blender; outros editores não mudam.
+- **Checklist ligado a imagens:** ao ligar, as cores que a imagem já tem viram tarefas do cartão (`adopt_image_regions`); remover uma tarefa remove a cor em todas as imagens ligadas e remover a cor remove a tarefa (`remove_task`).
+- **Copy to Clipboard:** copia a imagem selecionada, como aparece no canvas (ajustes, máscara e Color Markup), para colar em outros programas (`utils/clipboard_image.py`; PNG e bitmap, Windows).
+- **Testes novos:** `test_pencil`, `test_pencil_anchor`, `test_node_tools`, `test_node_header`, `test_node_sidebar`, `test_checklist_adopt`, `test_checklist_remove_sync`, `test_clipboard_copy`, `gui_pencil`.
+
+### Decisões
+- O desenho do lápis é um item só, por mais traços que tenha; um traço não vira spline por padrão (centenas de pontos não se editam um a um).
+- Mudar a cor do painel não recolore o desenho inteiro: só os traços escolhidos, para não apagar as cores por traço sem aviso.
+- A pressão é aplicada ao gravar, não ao desenhar: mudar a curva depois não altera o que já foi riscado.
+- O vínculo ao desenho é derivado de duas poses guardadas, o que evita ganchos em cada caminho de transformação e não pede nada especial do Undo.
+- Alt no Pencil apaga; o desenho solto ficou em Shift+arrastar.
+
 ## Sessão de 2026-11-07/08 — motor vetorial (furos, caneta, caminhos abertos, booleanas, traço), lista como ordem de desenho, foco ao editar
 
 Validado no Blender 5.2 sem interface gráfica (suíte paralela: 119 aprovados, 1 pede arquivo) e o desenho na GPU numa janela aberta por script (`scratch/gui_shape_draw.py`: furos, caminho aberto, curvas, tracejado, junções, alinhamento, cantos arredondados, Edit Vertices, imagem, foco e dessaturação desenham sem erro; os lotes da GPU são reaproveitados). Conferido pelo usuário numa janela: lista como ordem de desenho, girar e escalar grupos, foco ao editar (o bug com zoom grande achado por ele foi corrigido). Commit no branch `wip/session-2026-11-01`, enviado ao GitHub (`origin`).

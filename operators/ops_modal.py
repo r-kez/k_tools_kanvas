@@ -130,6 +130,8 @@ def _undo_content_signature(settings):
                          v.contour) for v in item.shape_vertices)
                   if item.item_type == 'SHAPE' else (),
                   (tuple(item.shape_gradient_start), tuple(item.shape_gradient_end))
+                  if item.item_type == 'SHAPE' else (),
+                  tuple((len(stroke.data), stroke.data[-12:]) for stroke in item.shape_strokes)
                   if item.item_type == 'SHAPE' else ())
                  for item in settings.images)
 
@@ -2137,6 +2139,11 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             if area_key in _box_armed_areas:
                 _box_armed_areas.discard(area_key)
                 return {'CANCELLED'}
+            from .ops_pencil import leave_pencil_edit, set_tool
+            if leave_pencil_edit(context, settings):
+                set_tool(context, 'kanvas.edit')
+                context.area.tag_redraw()
+                return {'CANCELLED'}
             from ..utils.gpu.gpu_shape import vertex_edit_shape
             editing = vertex_edit_shape(settings)
             if editing is not None:
@@ -2146,6 +2153,10 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             return {'PASS_THROUGH'}
 
         if self.action == 'VERTEX_EDIT':
+            from .ops_pencil import toggle_pencil_edit
+            if toggle_pencil_edit(context, settings) is not None:
+                context.area.tag_redraw()
+                return {'CANCELLED'}
             # E enters or leaves Edit Vertices, like M and C for Mask and Color.
             target = toggle_vertex_edit(settings)
             if target is None:
@@ -2162,6 +2173,21 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             return {'CANCELLED'}
 
         if self.action in {'SELECT_ALL', 'SELECT_INVERT'}:
+            from .ops_pencil import drawing_in_progress
+            drawing = drawing_in_progress(settings)
+            if drawing is not None:
+                # Drawing on a Pencil Drawing: these keys pick its strokes, not the board.
+                from ..properties import show_pencil_style
+                from ..utils import pencil
+                if self.action == 'SELECT_INVERT':
+                    pencil.invert_stroke_selection(drawing)
+                else:
+                    pencil.toggle_all_strokes(drawing)
+                picked = pencil.selected_strokes(drawing)
+                if picked:
+                    show_pencil_style(settings, drawing.shape_strokes[picked[-1]])
+                context.area.tag_redraw()
+                return {'CANCELLED'}
             from ..utils.gpu.gpu_shape import vertex_edit_shape
             editing = vertex_edit_shape(settings)
             if editing is not None:
@@ -2264,6 +2290,11 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     return {'CANCELLED'}
                 return {'PASS_THROUGH'}
             if self.action in {'MOVE', 'ROTATE', 'SCALE'}:
+                from .ops_pencil import picked_strokes_target
+                if picked_strokes_target(settings) is not None:
+                    # Picked strokes of a Pencil Drawing: the keys act on them, not the item.
+                    bpy.ops.kanvas.pencil_transform('INVOKE_DEFAULT', mode=self.action)
+                    return {'CANCELLED'}
                 started = self._start_vertex_transform(context, settings, self.action, mouse)
                 if started is not None:
                     return started
@@ -2294,6 +2325,9 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
                     bpy.ops.kanvas.pack_images()
                     return {'CANCELLED'}
             elif self.action == 'DELETE':
+                from .ops_pencil import delete_picked_strokes
+                if delete_picked_strokes(context, settings):
+                    return {'CANCELLED'}
                 from ..utils.gpu.gpu_shape import vertex_edit_shape
                 if vertex_edit_shape(settings) is not None:
                     # Never deletes the shape itself while its vertices are being edited.

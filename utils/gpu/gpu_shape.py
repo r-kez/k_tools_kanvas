@@ -423,6 +423,17 @@ def draw_shape_body(item, pixel_size, view_bounds):
     """Fill and line of one shape, at its place in the stack (between images)."""
     if not _visible(item, view_bounds):
         return
+    if item.shape_kind == 'PENCIL':
+        from ..pencil import draw_pencil_body
+        old_blend = gpu.state.blend_get()
+        gpu.state.blend_set('ALPHA')
+        try:
+            draw_pencil_body(item, view_bounds, pixel_size)
+        except Exception as exc:
+            print(f'Kanvas pencil {item.name}: {exc}')
+        finally:
+            gpu.state.blend_set(old_blend)
+        return
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     smooth = gpu.shader.from_builtin('SMOOTH_COLOR')
     old_blend = gpu.state.blend_get()

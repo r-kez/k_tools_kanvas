@@ -282,6 +282,46 @@ def update_shape_kind(self, context):
     update_frame_geometry(self, context)
 
 
+_syncing_pencil_style = False
+
+
+def update_pencil_style(self, context):
+    """The pencil's color and width also restyle the strokes picked with Ctrl+click."""
+    if _syncing_pencil_style:
+        return
+    for item in self.images:
+        if item.item_type == 'SHAPE' and item.shape_kind == 'PENCIL':
+            for stroke in item.shape_strokes:
+                if stroke.selected:
+                    stroke.color = self.pencil_color
+                    stroke.width = self.pencil_width
+    if getattr(context, 'area', None):
+        context.area.tag_redraw()
+
+
+def show_pencil_style(settings, stroke):
+    """Show a picked stroke's color and width in the pencil's fields without restyling."""
+    global _syncing_pencil_style
+    _syncing_pencil_style = True
+    try:
+        settings.pencil_color = stroke.color
+        settings.pencil_width = stroke.width
+    finally:
+        _syncing_pencil_style = False
+
+
+def update_pencil_editing(self, context):
+    """Only one drawing takes strokes at a time; the pencil tool follows the state."""
+    if getattr(self, 'pencil_editing', False):
+        settings = getattr(getattr(context, 'space_data', None), 'edit_tree', None)
+        settings = getattr(settings, 'kanvas_settings', None)
+        for other in (settings.images if settings else ()):
+            if other.pencil_editing and other.item_id != self.item_id:
+                other.pencil_editing = False
+    if getattr(context, 'area', None):
+        context.area.tag_redraw()
+
+
 def update_shape_appearance(self, context):
     if getattr(context, 'area', None):
         context.area.tag_redraw()
@@ -481,6 +521,24 @@ class KanvasGradientStop(bpy.types.PropertyGroup):
         name='Position', description='Where this stop sits, from the start (0) to the end (1)',
         default=0.0, min=0.0, max=1.0, subtype='FACTOR', update=update_shape_appearance,
     )
+
+
+class KanvasPencilStroke(bpy.types.PropertyGroup):
+    """One stroke of a Pencil Drawing: its points packed in a string (see utils/pencil.py)."""
+    data: bpy.props.StringProperty(  # type: ignore
+        name='Points',
+        description='x, y and pressure of every point, packed (unit box of the drawing)',
+    )
+    color: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Color', subtype='COLOR', size=3, default=(0.0, 0.0, 0.0), min=0.0, max=1.0)
+    width: bpy.props.FloatProperty(  # type: ignore
+        name='Width',
+        description='Line width at full pressure, in canvas units before the drawing scale',
+        default=4.0, min=0.1)
+    selected: bpy.props.BoolProperty(  # type: ignore
+        name='Selected',
+        description='Picked with Ctrl+click: color, width and Delete act on it',
+        default=False, options={'SKIP_SAVE'})
 
 
 class KanvasShapeVertex(bpy.types.PropertyGroup):
@@ -932,6 +990,7 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
             ('HEXAGON', 'Hexagon', 'Six equal sides', 'MESH_ICOSPHERE', 5),
             ('STAR', 'Star', 'Five pointed star', 'SOLO_OFF', 6),
             ('POLYGON', 'Polygon', 'Free vertices; edit them with Edit Vertices', 'EDITMODE_HLT', 7),
+            ('PENCIL', 'Pencil Drawing', 'Strokes drawn with the pencil, kept together', 'GREASEPENCIL', 8),
         ],
         default='RECTANGLE',
         update=update_shape_kind,
@@ -949,6 +1008,32 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         update=update_frame_geometry,
     )
     shape_vertices: bpy.props.CollectionProperty(type=KanvasShapeVertex)  # type: ignore
+    shape_strokes: bpy.props.CollectionProperty(type=KanvasPencilStroke)  # type: ignore
+    anchor_item_id: bpy.props.StringProperty(  # type: ignore
+        name='Stuck to',
+        description='Image this pencil drawing rides on (empty: the drawing is loose)',
+        default='')
+    anchor_offset: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Anchor Offset', size=2, default=(0.0, 0.0),
+        description='Position of the drawing in the frame of the image, in image scales')
+    anchor_rotation: bpy.props.FloatProperty(  # type: ignore
+        name='Anchor Rotation', default=0.0,
+        description='Rotation of the drawing relative to the image, in degrees')
+    anchor_scale: bpy.props.FloatProperty(  # type: ignore
+        name='Anchor Scale', default=1.0,
+        description='Scale of the drawing relative to the image')
+    anchor_parent_seen: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Image Pose Seen', size=4, default=(0.0, 0.0, 0.0, 1.0),
+        description='Pose of the image the last time the drawing was brought in line')
+    anchor_self_seen: bpy.props.FloatVectorProperty(  # type: ignore
+        name='Drawing Pose Seen', size=4, default=(0.0, 0.0, 0.0, 1.0),
+        description='Pose of the drawing the last time it was brought in line')
+    pencil_editing: bpy.props.BoolProperty(  # type: ignore
+        name='Draw',
+        description='New pencil strokes go into this drawing (E toggles it)',
+        default=False, options={'SKIP_SAVE'},
+        update=lambda self, context: update_pencil_editing(self, context),
+    )
     shape_edit_vertices: bpy.props.BoolProperty(  # type: ignore
         name='Edit Vertices',
         description=('Show the vertices of this shape. Click, Shift+click or drag a box to select '
@@ -1603,6 +1688,50 @@ class KanvasSettings(bpy.types.PropertyGroup):
     images: bpy.props.CollectionProperty(  # type: ignore
         type=KanvasImageItem,
     )
+    pencil_color: bpy.props.FloatVectorProperty(  # type: ignore
+        # Blue: black vanishes on dark themes and white on light ones.
+        name='Pencil Color', subtype='COLOR', size=3, default=(0.12, 0.5, 1.0),
+        description='Color of the next stroke, and of the strokes picked with Ctrl+click',
+        min=0.0, max=1.0, update=lambda self, context: update_pencil_style(self, context))
+    pencil_width: bpy.props.FloatProperty(  # type: ignore
+        name='Pencil Width',
+        description='Line width at full pressure, in canvas units: of the next stroke, and '
+                    'of the strokes picked with Ctrl+click', default=4.0,
+        min=0.5, max=200.0, soft_max=40.0,
+        update=lambda self, context: update_pencil_style(self, context))
+    pencil_smoothing: bpy.props.FloatProperty(  # type: ignore
+        name='Smoothing',
+        description='How much a stroke is smoothed when you lift the pen: 0 keeps your hand '
+                    'as it is, 1 irons out the wobble', default=0.5, min=0.0, max=1.0,
+        subtype='FACTOR')
+    pencil_use_pressure: bpy.props.BoolProperty(  # type: ignore
+        name='Pressure',
+        description='The pressure of a pen thins and thickens the line. Off, the line has the '
+                    'same width all along (a mouse always does)', default=True)
+    pencil_pressure_min: bpy.props.FloatProperty(  # type: ignore
+        name='Minimum Size',
+        description='Share of the width the line keeps with the lightest touch: 1 is the same '
+                    'width whatever the pressure', default=0.12, min=0.12, max=1.0,
+        subtype='FACTOR')
+    pencil_pressure_curve: bpy.props.FloatProperty(  # type: ignore
+        name='Response',
+        description='How the line answers to pressure: positive is soft (it thickens with a '
+                    'light touch), negative is hard (it needs more pressure), 0 is the pen as '
+                    'it comes', default=0.0, min=-1.0, max=1.0, subtype='FACTOR')
+    pencil_eraser_size: bpy.props.IntProperty(  # type: ignore
+        name='Eraser Size',
+        description='Radius of the eraser in screen pixels: it rubs out what it touches',
+        default=14, min=2, max=200, soft_max=60, subtype='PIXEL')
+    pencil_attach: bpy.props.BoolProperty(  # type: ignore
+        name='Stick to Image',
+        description='A new drawing sticks to the image under its first stroke and moves, '
+                    'rotates and scales with it. Shift+drag draws a loose one',
+        default=True)
+    pencil_antialias: bpy.props.BoolProperty(  # type: ignore
+        name='Antialiasing',
+        description='Soften the edge of the strokes with a one pixel fade. Turn it off for '
+                    'hard edges or a slightly faster redraw', default=True,
+        update=lambda self, context: context.area.tag_redraw() if context.area else None)
     list_search: bpy.props.StringProperty(  # type: ignore
         name='Search Items or Frames',
         description='Filter the item list by name, card text, or color region name without hiding canvas content',
@@ -1903,6 +2032,10 @@ class KanvasNodeTree(bpy.types.NodeTree): # type: ignore
     bl_idname = 'KanvasNodeTree'
     bl_label = 'Kanvas Tree'
     bl_icon = 'IMAGE'
+    # A board has no group inputs or outputs. On (Blender's default for a custom tree)
+    # it shows the Interface panel of the Group tab in the sidebar, a panel written in
+    # C that no Python poll can hide.
+    bl_use_group_interface = False
 
 def register():
     KanvasNodeTree.kanvas_settings = bpy.props.PointerProperty(

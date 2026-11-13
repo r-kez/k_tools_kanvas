@@ -221,13 +221,14 @@ def is_picture_item(item):
 # --- Rendering -------------------------------------------------------------------------
 
 def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=False,
-                keep_stretch=False, bit_depth=8):
+                keep_stretch=False, bit_depth=8, drawings=()):
     """The picture as a NumPy array (height, width, 4) of uint8, straight alpha, top
     row first (ready for PNG). `scale` is output pixels per image pixel. Full opacity:
     the item's opacity on the board is left out. `keep_stretch` keeps the item's stretch
     and shear (a sheared image comes out as a slanted shape with clear corners). Raises
     ValueError when the mask hides everything or the picture would be larger than
-    MAX_SIDE. `bit_depth` 16 gives a uint16 picture (see `board_render._render_tile`)."""
+    MAX_SIDE. `bit_depth` 16 gives a uint16 picture (see `board_render._render_tile`).
+    `drawings` are Pencil Drawings drawn over the image, cut at the edge of the picture."""
     import numpy as np
     from mathutils import Matrix
     from .item_geometry import item_bounds
@@ -260,7 +261,7 @@ def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=Fal
     picture = np.zeros((height, width, 4), dtype=np.uint16 if bit_depth == 16 else np.uint8)
     item_id = item.item_id
     saved = (item.opacity, item.markup_visible)
-    with _isolated(settings, ([item], [])):
+    with _isolated(settings, ([item, *drawings], [])):
         item = next(i for i in settings.images if i.item_id == item_id)
         item.opacity = 1.0
         item.markup_visible = bool(include_markup and item.markup_regions)
@@ -277,3 +278,42 @@ def render_item(settings, item, scale=1.0, crop_to_mask=True, include_markup=Fal
             item = next(i for i in settings.images if i.item_id == item_id)
             item.opacity, item.markup_visible = saved
     return unpremultiply(picture[::-1])
+
+
+def is_drawing_item(item):
+    """A Pencil Drawing: a picture of its own, made of strokes."""
+    return (item is not None and getattr(item, 'item_type', '') == 'SHAPE'
+            and item.shape_kind == 'PENCIL' and len(item.shape_strokes) > 0)
+
+
+def drawing_size(item, scale=1.0):
+    """(width, height) in pixels of the picture of a Pencil Drawing, or None."""
+    from .board_render import output_size
+    from .item_geometry import item_bounds
+    box = item_bounds(item)
+    if not box or box[2] <= box[0] or box[3] <= box[1]:
+        return None
+    return output_size(box, scale, 0)
+
+
+def render_drawing(settings, item, scale=1.0, bit_depth=8):
+    """The strokes of a Pencil Drawing alone, on a clear background, as it lies on the
+    board (rotation included), at full opacity: a NumPy array (height, width, 4), straight
+    alpha, top row first. `scale` is pixels per canvas unit. Raises ValueError when there
+    is nothing to draw or the picture would be too large."""
+    from .board_render import render
+    from .item_geometry import item_bounds
+    if not is_drawing_item(item):
+        raise ValueError('Not a pencil drawing')
+    box = item_bounds(item)
+    if not box or box[2] <= box[0] or box[3] <= box[1]:
+        raise ValueError('The drawing has no area')
+    item_id, saved = item.item_id, item.opacity
+    item.opacity = 1.0
+    try:
+        return render(settings, box, scale, 0, (0.0, 0.0, 0.0, 0.0), only=([item], []),
+                      bit_depth=bit_depth)
+    finally:
+        restored = next((i for i in settings.images if i.item_id == item_id), None)
+        if restored is not None:
+            restored.opacity = saved

@@ -610,7 +610,11 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
     highlight, selection outlines and handles, the ghost of an image whose mask is
     being edited and the greying of the editing focus. `region` may be a stand-in
     with `width`, `height` and `view2d`."""
-
+    try:
+        from ..pencil_anchor import sync as sync_stuck_drawings
+        sync_stuck_drawings(settings)      # drawings stuck to an image follow it
+    except Exception as exc:
+        print(f"Kanvas stuck drawings: {exc}")
 
 
     if not export:
@@ -744,6 +748,12 @@ def draw_board(settings, view_bounds, view_pixel_size, region, space=None, frame
         if space is not None:
             draw_canvas_annotations(space, frame_number)
         return
+
+    try:
+        from ..pencil import draw_live_stroke
+        draw_live_stroke()          # the stroke under the pen, before it joins a drawing
+    except Exception as exc:
+        print(f"Kanvas pencil: {exc}")
 
     # Selection outlines and vertex handles of shapes go above every layer.
     try:
@@ -891,6 +901,12 @@ def draw_board_labels(settings, region, area=None, export=False):
                 gpu_shape_cursor.draw_shape_cursor(region)
         except Exception as exc:
             print(f"Kanvas shape cursor: {exc}")
+    if not export:
+        try:
+            from ..pencil import draw_pencil_cursor
+            draw_pencil_cursor(region, settings)
+        except Exception as exc:
+            print(f"Kanvas pencil cursor: {exc}")
     # Arrow geometry is behind text in POST_VIEW; its labels follow the same
     # order in POST_PIXEL so card and frame text remain readable.
     draw_arrow_labels(settings, region)

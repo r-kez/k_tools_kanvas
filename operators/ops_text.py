@@ -182,25 +182,17 @@ class KANVAS_OT_RemoveTextLine(KanvasTreeOnly, bpy.types.Operator):
         lines = active_text(settings).text_lines
         if not 0 <= self.index < len(lines):
             return {'CANCELLED'}
-        if len(lines) == 1:
+        card = active_text(settings)
+        if card.text_checklist:
+            from .ops_checklist import remove_task
+            if len(lines) == 1 and not lines[0].value:
+                return {'CANCELLED'}
+            remove_task(settings, card, self.index)
+        elif len(lines) == 1:
             if not lines[0].value:
                 return {'CANCELLED'}
             lines[0].value = ''
         else:
-            from ..utils.arrow_geometry import endpoint, set_endpoint
-            line_id = lines[self.index].line_id
-            for arrow in settings.arrows:
-                for side in ('start', 'end'):
-                    if getattr(arrow, side + '_line_id') == line_id and line_id:
-                        set_endpoint(arrow, side, endpoint(settings, arrow, side))
-            for image in settings.images:
-                if image.item_type != 'IMAGE':
-                    continue
-                for region in image.markup_regions:
-                    if (region.checklist_card_id == active_text(settings).item_id
-                            and region.checklist_line_id == line_id):
-                        region.checklist_card_id = ''
-                        region.checklist_line_id = ''
             lines.remove(self.index)
         context.area.tag_redraw()
         return {'FINISHED'}

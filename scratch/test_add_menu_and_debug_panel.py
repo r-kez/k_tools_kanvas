@@ -63,6 +63,7 @@ try:
         'kanvas.create_text',
         'kanvas.create_text',
         'kanvas.create_text',
+        'kanvas.start_pencil',
         'kanvas.create_arrow',
         'kanvas.create_frame',
     ], menu.layout.operators

@@ -210,6 +210,20 @@ class KANVAS_OT_RemoveMarkupRegion(KanvasTreeOnly, bpy.types.Operator):
     def execute(self, context):
         item = _active_image(context)
         index = min(item.markup_active_index, len(item.markup_regions) - 1)
+        region = item.markup_regions[index]
+        from ..utils.kanvas_data import get_settings
+        settings = get_settings(context)
+        card = next((card for card in settings.images
+                     if region.checklist_card_id and card.item_id == region.checklist_card_id
+                     and card.item_type == 'TEXT' and card.text_checklist), None)
+        task = next((i for i, line in enumerate(card.text_lines)
+                     if line.line_id == region.checklist_line_id), -1) if card else -1
+        if task >= 0:
+            # A task and its color go together: removing one removes the other.
+            from .ops_checklist import remove_task
+            remove_task(settings, card, task)
+            context.area.tag_redraw()
+            return {'FINISHED'}
         item.markup_regions.remove(index)
         item.markup_active_index = max(0, min(index, len(item.markup_regions) - 1))
         item.markup_revision += 1

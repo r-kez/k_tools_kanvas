@@ -108,6 +108,11 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         name='Color Markup',
         description='Paint the color markup of the image over it, as on the canvas',
         default=False)
+    include_drawings: bpy.props.BoolProperty(  # type: ignore
+        name='Pencil Drawings',
+        description='With Image: draw the pencil drawings stuck to the image over it, cut at '
+                    'its edge',
+        default=True)
     bit_depth: bpy.props.EnumProperty(  # type: ignore
         name='Color Depth',
         description='Bits per channel of the PNG',
@@ -129,10 +134,11 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         if not self.filepath:
             tree = getattr(context.space_data, 'edit_tree', None)
             name = bpy.path.clean_name(tree.name if tree else 'Kanvas')
-            item = export_image_item(settings)
-            if item is not None and _only_image_selected(settings):
+            item = export_target(settings)
+            if item is not None and _only_picture_selected(settings):
                 self.scope = 'IMAGE'
-                name = bpy.path.clean_name(item.name or item.image_data.name)
+                fallback = item.image_data.name if item.item_type == 'IMAGE' else 'Drawing'
+                name = bpy.path.clean_name(item.name or fallback)
             folder = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else ''
             self.filepath = os.path.join(folder, name + '.png')
         return ExportHelper.invoke(self, context, event)
@@ -148,10 +154,13 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         """(width, height) of the picture, or None when there is nothing to export."""
         from ..utils.board_render import output_size
         if self.scope == 'IMAGE':
-            from ..utils.item_picture import picture_size
-            item = export_image_item(get_settings(context))
-            size = None if item is None else picture_size(item, self.scale, self.crop_to_mask,
-                                                          self.keep_stretch)
+            from ..utils.item_picture import drawing_size, picture_size
+            item = export_target(get_settings(context))
+            if item is not None and item.item_type == 'SHAPE':
+                size = drawing_size(item, self.scale)
+            else:
+                size = None if item is None else picture_size(
+                    item, self.scale, self.crop_to_mask, self.keep_stretch)
             return None if size is None else (size[0] + 2 * self.margin,
                                               size[1] + 2 * self.margin)
         rect = self._rect(context)
@@ -168,14 +177,17 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
         if self.scope != 'VIEW':
             layout.prop(self, 'crop_to_mask')
         if self.scope == 'IMAGE':
-            layout.prop(self, 'keep_stretch')
-            layout.prop(self, 'include_markup')
+            target = export_target(get_settings(context))
+            if target is None or target.item_type == 'IMAGE':
+                layout.prop(self, 'keep_stretch')
+                layout.prop(self, 'include_markup')
+                layout.prop(self, 'include_drawings')
         layout.prop(self, 'scale')
         layout.prop(self, 'margin')
         size = self._size(context)
         if size is None:
-            text = ('Select an image' if self.scope == 'IMAGE'
-                    and export_image_item(get_settings(context)) is None
+            text = ('Select an image or a pencil drawing' if self.scope == 'IMAGE'
+                    and export_target(get_settings(context)) is None
                     else 'Nothing to export')
             layout.label(text=text, icon='ERROR')
         else:
@@ -234,16 +246,22 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
 
     def _export_image(self, settings):
         from ..utils.board_render import write_png
-        from ..utils.item_picture import render_item
-        item = export_image_item(settings)
+        from ..utils.item_picture import render_drawing, render_item
+        item = export_target(settings)
         if item is None:
-            self.report({'WARNING'}, 'Nothing to export: select an image')
+            self.report({'WARNING'}, 'Nothing to export: select an image or a pencil drawing')
             return {'CANCELLED'}
         path = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), '.png')
         try:
-            picture = render_item(settings, item, self.scale, self.crop_to_mask,
-                                  self.include_markup, self.keep_stretch,
-                                  int(self.bit_depth))
+            if item.item_type == 'SHAPE':
+                picture = render_drawing(settings, item, self.scale, int(self.bit_depth))
+            else:
+                from ..utils.pencil_anchor import drawings_of
+                picture = render_item(settings, item, self.scale, self.crop_to_mask,
+                                      self.include_markup, self.keep_stretch,
+                                      int(self.bit_depth),
+                                      drawings_of(settings, item) if self.include_drawings
+                                      else ())
             picture = framed(picture, self.margin, self._background())
             write_png(path, picture)
         except Exception as exc:
@@ -254,6 +272,45 @@ class KANVAS_OT_ExportBoardImage(KanvasTreeOnly, bpy.types.Operator, ExportHelpe
             image.pack()
         height, width = picture.shape[:2]
         self.report({'INFO'}, f'Saved {width} x {height} px to {path}')
+        return {'FINISHED'}
+
+
+class KANVAS_OT_CopyImageToClipboard(KanvasTreeOnly, bpy.types.Operator):
+    """Copy the selected image to the system clipboard as it looks on the canvas."""
+    bl_idname = 'kanvas.copy_image_to_clipboard'
+    bl_label = 'Copy to Clipboard'
+    bl_description = ('Copy the selected image, with its adjustments, mask and color '
+                      'markup, or the selected pencil drawing, to the clipboard, to paste '
+                      'in other programs')
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        if not super().poll(context):
+            return False
+        return export_target(get_settings(context)) is not None
+
+    def execute(self, context):
+        from ..utils.clipboard_image import copy_picture
+        from ..utils.item_picture import render_drawing, render_item
+        settings = get_settings(context)
+        item = export_target(settings)
+        if item is None:
+            self.report({'WARNING'}, 'Select an image or a pencil drawing to copy')
+            return {'CANCELLED'}
+        try:
+            if item.item_type == 'SHAPE':
+                picture = render_drawing(settings, item, 1.0, 8)
+            else:
+                from ..utils.pencil_anchor import drawings_of
+                picture = render_item(settings, item, 1.0, True, True, False, 8,
+                                      drawings_of(settings, item))
+            copy_picture(picture)
+        except Exception as exc:
+            self.report({'ERROR'}, f'Could not copy the picture: {exc}')
+            return {'CANCELLED'}
+        height, width = picture.shape[:2]
+        self.report({'INFO'}, f'Copied {width} x {height} px to the clipboard')
         return {'FINISHED'}
 
 
@@ -270,9 +327,27 @@ def export_image_item(settings):
                  if item.is_selected and is_picture_item(item)), None)
 
 
-def _only_image_selected(settings):
+def export_target(settings):
+    """What Export Image > Image and Copy to Clipboard take: the image of
+    `export_image_item`, else the selected Pencil Drawing (the active one when it is
+    selected). None without either."""
+    from ..utils.item_picture import is_drawing_item
+    item = export_image_item(settings)
+    if item is not None:
+        return item
+    index = settings.active_image_index
+    if 0 <= index < len(settings.images):
+        active = settings.images[index]
+        if active.is_selected and is_drawing_item(active):
+            return active
+    return next((i for i in settings.images if i.is_selected and is_drawing_item(i)), None)
+
+
+def _only_picture_selected(settings):
+    from ..utils.item_picture import is_drawing_item
     selected = [item for item in settings.images if item.is_selected]
-    return (len(selected) == 1 and selected[0].item_type == 'IMAGE'
+    return (len(selected) == 1
+            and (selected[0].item_type == 'IMAGE' or is_drawing_item(selected[0]))
             and not any(arrow.is_selected for arrow in settings.arrows))
 
 

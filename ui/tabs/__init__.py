@@ -71,6 +71,10 @@ def draw_tab_bar(layout, context, kind):
 
 def draw_tabbed(layout, context, settings, item):
     """Header, tab bar and the open tab of an item. False for items without tabs."""
+    if item.item_type == 'SHAPE' and item.shape_kind == 'PENCIL':
+        from . import pencil_main
+        pencil_main.draw(layout.column(), context, settings, item)
+        return True
     kind = tab_kind(item)
     if kind is None:
         return False

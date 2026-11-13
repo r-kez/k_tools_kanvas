@@ -28,7 +28,7 @@ There are three ways to switch:
 
 - Press `Tab` with the pointer over the canvas.
 - Click **Edit** or **Move** in the switch at the top of the canvas. You can hide it in the preferences (see below).
-- Use the **Edit | Move** buttons in the editor header or at the top of the **Kanvas** sidebar panel.
+- Use the **Edit | Move** buttons in the editor header. **Edit/Move Switch in the Panel** in the preferences repeats them at the top of the **Kanvas** sidebar panel.
 
 The mode is saved with the board. `Tab` is not affected in other editors, and it keeps its original meaning inside [Mask and Color editing](masks.md), where it switches tools.
 

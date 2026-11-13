@@ -490,6 +490,9 @@ def handle_points(item, index):
 def bounds(item):
     """Axis-aligned canvas bounds (left, bottom, right, top) of the rotated shape."""
     points = outline(item)
+    if item.shape_kind == 'PENCIL':
+        # A Pencil Drawing has no outline: its box is what it occupies.
+        points = box_corners(item)
     if not points:
         x, y = item.location
         return x, y, x, y
@@ -624,6 +627,11 @@ def hit_shape(item, point, tolerance):
     A filled shape is picked anywhere inside it (not inside its holes). A shape without
     a fill is picked only on its outline, so it never blocks the image underneath it.
     """
+    if item.shape_kind == 'PENCIL':
+        # A Pencil Drawing is picked on its strokes, never on the empty part of its box,
+        # so the image under it stays reachable.
+        from . import pencil
+        return pencil.pick_stroke(item, point, tolerance) is not None
     points = outline(item)
     if len(points) < min_vertices(item):
         return False

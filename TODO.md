@@ -2,7 +2,7 @@
 
 Só o que ainda não foi feito. O que já foi feito, com o histórico das sessões e as decisões, está em [DONE.md](DONE.md).
 
-Legenda: `[ ]` por fazer, `[~]` em parte. Prioridades P1 (mais urgente) a P4. Atualizado em 2026-11-10.
+Legenda: `[ ]` por fazer, `[~]` em parte. Prioridades P1 (mais urgente) a P4. Atualizado em 2026-11-13.
 
 ## Roadmap de ideias — recursos novos e refinamentos (proposto em 2026-11-01)
 
@@ -20,11 +20,25 @@ Legenda: `[ ]` por fazer, `[~]` em parte. Prioridades P1 (mais urgente) a P4. At
 - [ ] **P3 — Guias inteligentes de espaçamento:** durante o arrasto, mostrar e atrair para distâncias iguais entre vizinhos, além do snap por bordas e grade que já existe.
 - [ ] **P4 — Ponteiro laser e anotações temporárias:** útil em apresentação; baixa prioridade e só vale se couber sem modal permanente.
 
+### Lápis (Desenho Lápis) — o que falta
+
+O que já existe (2026-11-12): item `Pencil Drawing` (forma com `shape_kind == 'PENCIL'`) que guarda todos os traços; ferramenta **Pencil** na barra T; o primeiro traço cria o desenho e os seguintes entram nele; **E** volta a desenhar num desenho; pressão da mesa; suavização própria; cor e largura por traço; **Ctrl+clique** escolhe um traço, **Shift+Ctrl+clique** soma, **X/Delete** apaga o traço escolhido; cor padrão azul. Código em `utils/pencil.py`, `operators/ops_pencil.py`, `ui/tabs/pencil_main.py`; testes `test_pencil`, `gui_pencil`. O que já foi conferido e entregue (antialiasing, box select, G/R/S num traço, borracha parcial, escolha por proximidade) está em [DONE.md](DONE.md); os itens `[~]` abaixo esperam a conferência na janela.
+
+- [~] **P2 — Selecionar todos os traços** (2026-11-12: feito com **Ctrl+A** (alterna) e **Ctrl+I** (inverte) dentro da edição do desenho, as mesmas teclas dos vértices, porque o **A** já é a seta rápida; a cor e a largura do painel valem para os traços escolhidos e não recolorem o desenho inteiro; `pencil.toggle_all_strokes`/`invert_stroke_selection`, teste em `test_pencil`; falta conferir na janela).
+- [~] **P2 — Preso à imagem** (2026-11-13: feito — o desenho nasce preso à imagem sob o primeiro traço (opção **Stick to Image**, ligada por padrão; **Shift+arrastar** desenha solto) e acompanha mover, girar e escalar; botões **Stick to Image** e **Detach** no painel do desenho; Export Image > Image e Copy to Clipboard incluem os desenhos presos (opção **Pencil Drawings**). Como funciona: `utils/pencil_anchor.py` guarda a pose relativa e `sync` a reaplica a cada desenho, sem ganchos em cada transformação; mexer no desenho refaz a âncora; teste `test_pencil_anchor`. Limite: carrega só mover, girar e escala uniforme, não o esticar, o shear nem o flip da imagem. Falta conferir na janela, inclusive um quadro grande (o `sync` percorre os itens a cada desenho) e o Shift+arrastar).
+- [~] **P2 — Entrada no Export Image e no Copy to Clipboard** (2026-11-12: feito — com um desenho do lápis selecionado, **Export Image > Image** e **Copy to Clipboard** geram o desenho sozinho, fundo transparente, na posição e rotação do board (`item_picture.render_drawing`, `export_target`); os escopos Selection, Whole Board e View já passam pelo `draw_board`. Corrigido `shape_geometry.bounds`, que dava um ponto para o desenho do lápis. Falta conferir a imagem de verdade na janela (a renderização pede GPU, o teste sem janela só cobre a lógica) os traços presos a uma imagem já entram na exportação e na cópia dela).
+- [ ] **P3 — Converter traço em Forma:** comando explícito nos traços escolhidos: ajusta uma curva ao traço (algoritmo de Schneider, ou o Simplify e o Smooth que as formas já têm), gera um caminho aberto com alças Bézier e abre a edição de vértices que já existe. Perde a pressão ponto a ponto. Não transformar os traços em spline por padrão: um traço à mão tem centenas de pontos e editá-los um a um não serve. Liga com o item "Formas: traço livre" acima.
+- [ ] **P3 — Highlight ao passar o mouse com Ctrl apertado:** só enquanto Ctrl estiver segurado (binding de MOUSEMOVE ativo só nesse momento, sem modal parado).
+- [ ] **P3 — Setas ancoradas num desenho que cresce:** a caixa muda quando um novo traço sai dela e as pontas das setas ancoradas se movem junto; reajustar como `normalize_shape` faz com as formas.
+- [~] **Controles da caneta** (2026-11-13: feitos **Pressure** (liga e desliga), **Minimum Size** e **Response** (curva) no painel do lápis; valem na hora de gravar o traço (`pencil.apply_pressure`), a prévia ao vivo usa a mesma conta, e traços antigos não mudam. Falta conferir com o tablet. Ideias para depois: pressão na opacidade (guarda mais um valor por traço) e inclinação da caneta)
+- [ ] **P4 — Painel do lápis completo:** cor, largura e suavização estão no painel K-Tools quando o Pencil está ativo; falta nome, opacidade por traço e uma lista de traços (só para desenhos pequenos).
+
 ### Integração com o Blender
 
 - [ ] **P2 — Referência na vista 3D** (em andamento, plano de 2026-11-10):
   - [ ] Cartões de comparação mostrarem o corte de cada lado (hoje usam a imagem inteira) e PureRef importar/exportar o recorte.
   - [ ] Ajustar o corte à mão (arrastar as bordas da caixa) e margem opcional em Fit Bounds to Mask.
+  - [ ] **Editar o overlay na própria vista 3D, sem abrir o painel (pedido em 2026-11-12):** havendo um overlay de imagem na vista ativa, segurar **Alt** desenha os pontos de controle da imagem, parecidos com os do Kanvas 2D, e com Alt apertado o usuário move, gira e escala o overlay arrastando. Soltar Alt esconde os pontos. Sem modal parado: o desenho dos pontos e o arrasto só existem enquanto Alt (ou o arrasto) estiver ativo. Já existe `ui/view3d_overlay_gizmo.py` (o quadro do botão Adjust): reaproveitar a mesma conta de retângulo e o mesmo desenho, trocando o gatilho do botão por Alt. Verificar conflito com Alt+clique e Alt+roda do Blender na View 3D e deixar a tecla configurável nas preferências.
 - [ ] **P2 — Medição e escala real** — o que falta:
   - [ ] **Match Real Scale** no quadro: selecionar várias imagens calibradas e igualar a escala delas (duas referências de carro lado a lado em proporção real).
   - [ ] Copiar a escala de uma imagem para outra (mesma câmera, mesma distância) e mostrar a escala em Copy/Paste Style.

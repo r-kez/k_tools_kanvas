@@ -164,6 +164,126 @@ def _windows_clipboard_image():
     return ClipboardImage()
 
 
+def _remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def png_bytes(picture):
+    """A (height, width, 4) uint8/uint16 array as PNG bytes."""
+    import tempfile
+    from .board_render import write_png
+    handle, path = tempfile.mkstemp(suffix='.png', prefix='kanvas_')
+    os.close(handle)
+    try:
+        write_png(path, picture)
+        with open(path, 'rb') as stream:
+            return stream.read()
+    finally:
+        _remove(path)
+
+
+def bmp_dib(picture):
+    """Bottom-up 32-bit BGRA DIB (BITMAPV5HEADER) of an RGBA picture, top row first."""
+    import numpy as np
+    if picture.dtype != np.uint8:
+        picture = (picture >> 8).astype(np.uint8)
+    height, width = picture.shape[:2]
+    pixels = np.ascontiguousarray(picture[::-1][..., [2, 1, 0, 3]]).tobytes()
+    header = struct.pack('<IiiHHIIiiII', 124, width, height, 1, 32, 3,
+                         len(pixels), 2835, 2835, 0, 0)
+    masks = struct.pack('<IIII', 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
+    color_space = struct.pack('<I', 0x73524742) + b'\0' * 36   # 'sRGB', no endpoints
+    gamma = b'\0' * 12
+    intent = struct.pack('<IIII', 4, 0, 0, 0)                  # LCS_GM_IMAGES
+    return header + masks + color_space + gamma + intent + pixels
+
+
+def _set_windows_clipboard(png, dib):
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    user32.OpenClipboard.argtypes = (wintypes.HWND,)
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.argtypes = ()
+    user32.EmptyClipboard.argtypes = ()
+    user32.SetClipboardData.argtypes = (wintypes.UINT, ctypes.c_void_p)
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    user32.RegisterClipboardFormatW.argtypes = (wintypes.LPCWSTR,)
+    user32.RegisterClipboardFormatW.restype = wintypes.UINT
+    kernel32.GlobalAlloc.argtypes = (wintypes.UINT, ctypes.c_size_t)
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = (ctypes.c_void_p,)
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = (ctypes.c_void_p,)
+    kernel32.GlobalFree.argtypes = (ctypes.c_void_p,)
+
+    def block(data):
+        handle = kernel32.GlobalAlloc(0x0002, len(data))     # GMEM_MOVEABLE
+        if not handle:
+            raise RuntimeError('Out of memory for the clipboard')
+        pointer = kernel32.GlobalLock(handle)
+        ctypes.memmove(pointer, data, len(data))
+        kernel32.GlobalUnlock(handle)
+        return handle
+
+    for _ in range(10):
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.02)
+    else:
+        raise RuntimeError('Clipboard is busy; try again')
+    try:
+        user32.EmptyClipboard()
+        for format_id, data in ((user32.RegisterClipboardFormatW('PNG'), png),
+                                (_CF_DIBV5, dib)):
+            handle = block(data)
+            if not user32.SetClipboardData(format_id, handle):
+                kernel32.GlobalFree(handle)   # the system owns it only on success
+                raise RuntimeError('Could not place the picture on the clipboard')
+    finally:
+        user32.CloseClipboard()
+
+
+def _run_clipboard_tool(command, data=None):
+    import subprocess
+    try:
+        subprocess.run(command, input=data, check=True, timeout=10,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise RuntimeError(f'"{command[0]}" is not installed') from None
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise RuntimeError(f'"{command[0]}" failed: {exc}') from None
+
+
+def copy_picture(picture):
+    """Put an RGBA picture (uint8/uint16 array, top row first) on the system clipboard
+    as an image. Windows writes the pixels directly; macOS and Linux go through a file
+    in the system temp folder and the system tool. Raises RuntimeError when it cannot."""
+    import shutil
+    import tempfile
+    png = png_bytes(picture)
+    if sys.platform == 'win32':
+        _set_windows_clipboard(png, bmp_dib(picture))
+    elif sys.platform == 'darwin':
+        handle, path = tempfile.mkstemp(suffix='.png', prefix='kanvas_')
+        try:
+            with os.fdopen(handle, 'wb') as stream:
+                stream.write(png)
+            _run_clipboard_tool(['osascript', '-e',
+                                 f'set the clipboard to (read (POSIX file "{path}") '
+                                 'as «class PNGf»)'])
+        finally:
+            _remove(path)
+    elif shutil.which('wl-copy'):
+        _run_clipboard_tool(['wl-copy', '--type', 'image/png'], png)
+    elif shutil.which('xclip'):
+        _run_clipboard_tool(['xclip', '-selection', 'clipboard', '-t', 'image/png'], png)
+    else:
+        raise RuntimeError('Install "wl-copy" (Wayland) or "xclip" (X11) to copy images')
+
+
 def read_image_clipboard(text_fallback=''):
     """Prefer copied files, then pixels, then copied local paths."""
     if sys.platform == 'win32':

@@ -113,7 +113,9 @@ try:
     with bpy.context.temp_override(area=area, region=region,
                                    space_data=area.spaces.active):
         assert bpy.ops.kanvas.remove_text_line(index=2) == {'FINISHED'}
-    assert first.markup_regions[-1].checklist_line_id == ''
+    # Removing a task takes its color with it (the other colors keep their paint).
+    assert len(first.markup_regions) == 2
+    assert {part.checklist_line_id for part in first.markup_regions} == {'task-a', 'task-b'}
 
     second = settings.images[2]
     second.markup_regions[0].dabs.add().uv = (0.25, 0.25)

@@ -108,8 +108,10 @@ You can link a checklist to images, so each task gets a color region.
 What happens:
 
 - Each task gets its own color region on every linked image, with the task's color and name.
+- Colors the image already had are not left out: each one that is not linked to another checklist is added to the checklist as a task, with its name and color. A color named like a task joins that task instead (a task with no color of its own takes the color of the paint). Linking again later does not add tasks back that you deleted.
 - Regions follow the checklist. Reordering tasks reorders the regions, and renaming a task renames its region.
 - To remove a link, use the unlink button next to **Link Selected**. The paint you made stays.
+- A task and its color go together: removing a task removes its color and paint from every linked image, and removing a linked color removes its task from the checklist. A checklist keeps at least one line, so its last task is only emptied. Unlinking first keeps the paint.
 
 ### Task arrows and the eye
 

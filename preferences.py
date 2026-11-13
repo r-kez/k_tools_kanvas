@@ -348,7 +348,7 @@ class KanvasPreferences(bpy.types.AddonPreferences):
     auto_copy: bpy.props.BoolProperty( #type: ignore
         name="Auto-Copy to Assets",
         description="Automatically copy images to the project assets folder when added",
-        default=True
+        default=False
     )
 
     show_debug_panel: bpy.props.BoolProperty( #type: ignore
@@ -368,10 +368,38 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         update=lambda self, context: _update_hide_datablocks(self, context),
     )
 
+    simplified_node_header: bpy.props.BoolProperty( #type: ignore
+        name="Simplified Header",
+        description=("Hide the View, Select and Overlays controls from the Node Editor header "
+                     "on a Kanvas board. Off, Blender's own header shows"),
+        default=True,
+    )
+
+    simplified_node_sidebar: bpy.props.BoolProperty( #type: ignore
+        name="Simplified Sidebar",
+        description=("Show only the K-Tools panels in the Node Editor sidebar (N) on a Kanvas "
+                     "board, hiding Blender's and other add-ons' panels. Off, they all show"),
+        default=True,
+    )
+
+    simplified_node_toolbar: bpy.props.BoolProperty( #type: ignore
+        name="Kanvas Toolbar",
+        description=("Show Kanvas's own tools in the Node Editor toolbar (T) on a Kanvas "
+                     "board, in place of Blender's. Off, the board shows Blender's tools"),
+        default=True,
+    )
+
+    show_mode_in_panel: bpy.props.BoolProperty( #type: ignore
+        name="Edit/Move Switch in the Panel",
+        description="Also show the Edit / Move switch at the top of the Kanvas sidebar panel "
+                    "(it is always in the editor header)",
+        default=False,
+    )
+
     show_mode_overlay: bpy.props.BoolProperty( #type: ignore
         name="Show Edit/Move Overlay",
         description="Show the Edit / Move switch at the top of the canvas (Tab still toggles the mode)",
-        default=True,
+        default=False,
         update=_update_axis_appearance,
     )
 
@@ -520,6 +548,10 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         box.prop(self, "show_3d_references_panel")
         box.prop(self, "show_text_edit_button")
         box.prop(self, "show_mode_overlay")
+        box.prop(self, "show_mode_in_panel")
+        box.prop(self, "simplified_node_header")
+        box.prop(self, "simplified_node_sidebar")
+        box.prop(self, "simplified_node_toolbar")
         box.prop(self, "hide_datablocks")
 
         col.separator()

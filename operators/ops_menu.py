@@ -41,6 +41,7 @@ def draw_kanvas_add_entries(layout):
     layout.operator("kanvas.create_text", icon='CHECKBOX_HLT', text="Checklist").checklist = True
     layout.operator("kanvas.create_text", icon='UV_SYNC_SELECT', text="Compare A/B").compare = True
     layout.menu("KANVAS_MT_add_shape", text="Shape", icon='MESH_PLANE')
+    layout.operator("kanvas.start_pencil", icon='GREASEPENCIL', text="Pencil Drawing")
     layout.operator("kanvas.create_arrow", icon='TRIA_RIGHT', text="Arrow")
     layout.operator("kanvas.create_frame", icon='FULLSCREEN_ENTER', text="Frame")
 
@@ -177,6 +178,7 @@ class KANVAS_MT_ContextMenu(bpy.types.Menu):
             layout.separator()
             layout.operator_context = 'INVOKE_DEFAULT'
             layout.operator("kanvas.export_board_image", icon='IMAGE_DATA', text="Export Image...")
+            layout.operator("kanvas.copy_image_to_clipboard", icon='COPYDOWN')
             if any(item.item_type == 'IMAGE' and item.image_data for item in content):
                 layout.operator("kanvas.add_3d_reference", icon='OUTLINER_OB_IMAGE',
                                 text="Send to 3D View...")

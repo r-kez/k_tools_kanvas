@@ -61,6 +61,71 @@ def _reorder_card_regions(image, card):
     return True
 
 
+def adopt_image_regions(card, image):
+    """On linking: the colors the image already has become tasks of the checklist, with
+    their name and color, so the paint is not left out. A color named like an existing
+    task joins that task (a task with no color of its own takes the paint's color).
+    Colors already linked to a checklist, or detached from one, are left alone. Returns
+    how many tasks were added."""
+    names = {}
+    for line in card.text_lines:
+        names.setdefault(line.value, []).append(line)
+    claimed = set()
+    added = 0
+    for region in image.markup_regions:
+        if region.checklist_card_id or region.checklist_origin_card_id:
+            continue
+        same = [line for line in names.get(region.name, ()) if line.as_pointer() not in claimed]
+        if len(names.get(region.name, ())) == 1 and same:
+            line = same[0]
+            claimed.add(line.as_pointer())
+            if not line.is_property_set('color'):
+                line.color = tuple(region.color)
+            continue
+        if not region.name:
+            continue
+        empty = next((line for line in card.text_lines
+                      if not line.value and line.as_pointer() not in claimed), None)
+        line = empty or card.text_lines.add()
+        line.line_id = line.line_id or uuid.uuid4().hex
+        line.value = region.name
+        line.color = tuple(region.color)
+        claimed.add(line.as_pointer())
+        added += 1
+    return added
+
+
+def remove_task(settings, card, index):
+    """Remove a checklist task and the color it paints on every linked image, with that
+    paint. The arrows that pointed at the task keep their place on the card. A checklist
+    keeps at least one line, so its last task is only emptied."""
+    from ..utils.arrow_geometry import endpoint, set_endpoint
+    lines = card.text_lines
+    line_id = lines[index].line_id
+    if line_id:
+        for arrow in settings.arrows:
+            for side in ('start', 'end'):
+                if getattr(arrow, side + '_line_id') == line_id:
+                    set_endpoint(arrow, side, endpoint(settings, arrow, side))
+        for image in settings.images:
+            if image.item_type != 'IMAGE':
+                continue
+            doomed = [i for i, region in enumerate(image.markup_regions)
+                      if region.checklist_card_id == card.item_id
+                      and region.checklist_line_id == line_id]
+            for i in reversed(doomed):
+                image.markup_regions.remove(i)
+            if doomed:
+                image.markup_active_index = max(
+                    0, min(image.markup_active_index, len(image.markup_regions) - 1))
+                image.markup_revision += 1
+    if len(lines) == 1:
+        lines[0].value = ''
+        lines[0].line_id = ''
+    else:
+        lines.remove(index)
+
+
 def sync_checklist_regions(settings, image):
     """Add missing task colors and refresh names without replacing paint."""
     cards = {item.item_id: item for item in settings.images
@@ -102,6 +167,8 @@ def sync_checklist_regions(settings, image):
                               and region.name == line.value]
                 if len(candidates) == 1:
                     region = candidates[0]
+            if region is None and not line.value:
+                continue            # an emptied task paints nothing
             if region is None:
                 region = image.markup_regions.add()
                 region.region_id = uuid.uuid4().hex
@@ -120,6 +187,15 @@ def sync_checklist_regions(settings, image):
             if region.name != line.value:
                 region.name = line.value
                 changed = True
+        # A task removed in any way takes its color with it.
+        task_ids = {line.line_id for line in card.text_lines}
+        for i in reversed(range(len(image.markup_regions))):
+            part = image.markup_regions[i]
+            if part.checklist_card_id == card.item_id and part.checklist_line_id not in task_ids:
+                image.markup_regions.remove(i)
+                changed = True
+        image.markup_active_index = max(
+            0, min(image.markup_active_index, len(image.markup_regions) - 1))
         changed = _reorder_card_regions(image, card) or changed
     if changed:
         image.markup_revision += 1
@@ -141,6 +217,7 @@ def associate_arrow_endpoints(settings, arrow):
     card, image = pair
     created = not is_associated(image, card.item_id)
     if created:
+        adopt_image_regions(card, image)
         image.checklist_associations.add().card_id = card.item_id
     sync_checklist_regions(settings, image)
     return created
@@ -164,14 +241,18 @@ class KANVAS_OT_AssociateChecklist(KanvasTreeOnly, bpy.types.Operator):
         card = active_checklist(settings)
         if card is None:
             return {'CANCELLED'}
-        count = 0
+        count = adopted = 0
         for image in selected_images(settings):
             if not is_associated(image, card.item_id):
+                adopted += adopt_image_regions(card, image)
                 image.checklist_associations.add().card_id = card.item_id
                 count += 1
             sync_checklist_regions(settings, image)
         context.area.tag_redraw()
-        self.report({'INFO'}, f'Checklist linked to {count} image(s)')
+        message = f'Checklist linked to {count} image(s)'
+        if adopted:
+            message += f'; {adopted} existing color(s) added as tasks'
+        self.report({'INFO'}, message)
         return {'FINISHED'}
 
 
