@@ -210,6 +210,9 @@ def reset_item_transforms(context, settings, active, action):
     parents = set()
     changed = False
 
+    prefs = get_prefs()
+    reset_to_import = getattr(prefs, 'reset_to_import_scale', True) if prefs else True
+
     if action == 'RESET_MOVE':
         frame_names = {item.frame_node_name for item in targets if item.item_type == 'FRAME'}
         roots = [item for item in targets
@@ -250,11 +253,13 @@ def reset_item_transforms(context, settings, active, action):
                         continue
                     item.rotation = 0.0
                 else:
-                    if (tuple(item.scale_xy) == (1.0, 1.0) and item.scale_master == 1.0
+                    # Back to the Scale the image came in with (or to its pixel size).
+                    home = item.import_scale if reset_to_import else 1.0
+                    if (tuple(item.scale_xy) == (1.0, 1.0) and item.scale_master == home
                             and tuple(item.shear_xy) == (0.0, 0.0)):
                         continue
                     item.scale_xy = (1.0, 1.0)
-                    item.scale_master = 1.0
+                    item.scale_master = home
                     item.shear_xy = (0.0, 0.0)
                 changed = True
                 if item.parent_frame:
@@ -2054,6 +2059,21 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             return {'PASS_THROUGH'}
         return {'PASS_THROUGH'}
 
+    @staticmethod
+    def _pencil_wheel(context, settings, delta):
+        """Step the pencil width while the pencil tool is picked or strokes are picked.
+        False when the wheel is not for the pencil."""
+        from .ops_pencil import picked_strokes_target, PENCIL_TOOL
+        if settings.canvas_mode == 'MOVE':
+            return False
+        tool = context.workspace.tools.from_space_node()
+        if not ((tool is not None and tool.idname == PENCIL_TOOL)
+                or picked_strokes_target(settings) is not None):
+            return False
+        # The width property restyles the picked strokes through its update callback.
+        settings.pencil_width = max(0.5, min(200.0, settings.pencil_width * (1.1 if delta > 0 else 0.9)))
+        return True
+
     def invoke(self, context, event):
         if not _event_in_canvas(context, event):
             return {'PASS_THROUGH'}
@@ -2222,6 +2242,11 @@ class KANVAS_OT_Interact(KanvasInteractionHelpers, bpy.types.Operator):
             _, hit = self._find_image_at_pos(context, mouse)
             idx = settings.active_image_index
             active = settings.images[idx] if 0 <= idx < len(settings.images) else None
+            if _modifier_held(event, prefs.wheel_opacity_mod) and self._pencil_wheel(
+                    context, settings, delta):
+                # The pencil is picked (or strokes are): the opacity wheel sets its width.
+                context.area.tag_redraw()
+                return {'FINISHED'}
             if _modifier_held(event, prefs.wheel_opacity_mod):
                 target = hit or active
                 if target:

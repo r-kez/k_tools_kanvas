@@ -634,7 +634,7 @@ def draw_pencil_cursor(region, settings):
         return
     tool = window.workspace.tools.from_space_node()
     name = tool.idname if tool is not None else ''
-    if name not in {'kanvas.pencil', 'kanvas.eraser'}:
+    if name not in {'kanvas.pencil', 'kanvas.eraser'} or settings.canvas_mode == 'MOVE':
         return
     entry = hover.get(hover_key(window, area))
     if entry is None:

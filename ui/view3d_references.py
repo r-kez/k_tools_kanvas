@@ -52,7 +52,7 @@ class KANVAS_UL_References3D(bpy.types.UIList):
 
 
 class KANVAS_PT_References3D(bpy.types.Panel):
-    bl_label = 'References'
+    bl_label = 'Kanvas References'
     bl_idname = 'KANVAS_PT_references_3d'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -61,18 +61,15 @@ class KANVAS_PT_References3D(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         prefs = _prefs(context)
-        return getattr(context, 'scene', None) is not None and (
-            prefs is None or getattr(prefs, 'show_3d_references_panel', True))
+        scene = getattr(context, 'scene', None)
+        # Only when the scene has references: without them the tab has nothing to show.
+        return (scene is not None and hasattr(scene, 'kanvas_references')
+                and (prefs is None or getattr(prefs, 'show_3d_references_panel', True))
+                and any(not ref.is_deleted(entry) for entry in scene.kanvas_references))
 
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        if not any(not ref.is_deleted(entry) for entry in scene.kanvas_references):
-            column = layout.column(align=True)
-            column.label(text='No references yet', icon='INFO')
-            column.label(text='In Kanvas, select images and choose')
-            column.label(text='Send to 3D View in the right-click menu')
-            return
         if any(entry.kind == 'OVERLAY' for entry in scene.kanvas_references):
             hidden = scene.kanvas_overlays_hidden
             layout.prop(scene, 'kanvas_overlays_hidden', toggle=True,
@@ -178,6 +175,7 @@ class KANVAS_PT_Reference3DSettings(bpy.types.Panel):
         column.prop(entry, 'size', slider=True)
         column.prop(entry, 'anchor')
         column.prop(entry, 'offset', text='Offset')
+        column.prop(entry, 'rotation')
         column.prop(entry, 'flip_h')
         column.prop(entry, 'show_in')
         column.prop(entry, 'fit_camera')

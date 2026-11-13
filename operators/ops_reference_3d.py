@@ -3,6 +3,8 @@ drawn over the view, and manage them from the 3D View: update a reference after
 editing its image, select it, place an overlay, find its image on the board, remove
 it."""
 
+import math
+
 import bpy
 
 from .kanvas_context import KanvasTreeOnly
@@ -119,6 +121,9 @@ class KanvasReference(bpy.types.PropertyGroup):
     offset: bpy.props.FloatVectorProperty(  # type: ignore
         name='Offset', description='Shift from the anchor, in pixels', size=2,
         default=(0.0, 0.0), subtype='XYZ', update=_redraw_overlays)
+    rotation: bpy.props.FloatProperty(  # type: ignore
+        name='Rotation', description='Turn the overlay around its middle', default=0.0,
+        subtype='ANGLE', unit='ROTATION', update=_redraw_overlays)
     flip_h: bpy.props.BoolProperty(  # type: ignore
         name='Flip', description=('Mirror the overlay from left to right, to check proportions '
                                   'with fresh eyes'),
@@ -145,9 +150,172 @@ class KanvasReference(bpy.types.PropertyGroup):
     empty_matrix: bpy.props.FloatVectorProperty(size=16, default=[0.0] * 16)  # type: ignore
     adjusting: bpy.props.BoolProperty(  # type: ignore
         name='Adjust',
-        description=('Move the overlay by dragging it in the 3D View, and scale it by its top '
-                     'right corner. Turn off to click through it again'),
+        description=('Keep the frame on the overlay all the time, so you see what the '
+                     'shortcuts (Alt + drag to move, Alt + right drag to rotate, Alt + Shift + '
+                     'drag to scale) will grab. Without it the frame shows only while Alt is held'),
         default=False, options={'SKIP_SAVE'}, update=_adjust_one)
+
+
+class KANVAS_OT_OverlayEditKey(bpy.types.Operator):
+    """The modifiers of the overlay shortcuts going down or up in a 3D View: remember it, so
+    the frame of the overlay under the pointer shows while they are held. Also run on mouse
+    moves, which puts right a key released while Blender did not have the focus. One-shot,
+    never modal, and the event always goes on to Blender."""
+    bl_idname = 'kanvas.overlay_edit_key'
+    bl_label = 'Overlay Frame Key'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        scene = getattr(context, 'scene', None)
+        return (scene is not None and hasattr(scene, 'kanvas_references')
+                and context.area is not None and context.area.type == 'VIEW_3D'
+                and any(entry.show for entry in overlay_3d.overlays(scene)))
+
+    def invoke(self, context, event):
+        state = overlay_3d.edit_state
+        down = overlay_3d.hint_held(event)
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        changed = (down != state['down'] or state['area'] != context.area.as_pointer()
+                   or (down and mouse != state['mouse']))
+        state['down'] = down
+        state['mouse'] = mouse
+        state['area'] = context.area.as_pointer()
+        if changed:     # a mouse move that changes nothing must not redraw the view
+            context.area.tag_redraw()
+        return {'PASS_THROUGH'}
+
+
+class KANVAS_OT_OverlayEdit(bpy.types.Operator):
+    """Move, rotate or scale the overlay under the pointer by dragging, or reset it. Modal
+    only while the button is held; when the pointer is not over an overlay the event goes on
+    to Blender."""
+    bl_idname = 'kanvas.overlay_edit'
+    bl_label = 'Edit Overlay'
+    bl_description = 'Move, rotate or scale the Kanvas overlay under the pointer'
+    bl_options = {'INTERNAL', 'UNDO'}
+
+    action: bpy.props.EnumProperty(  # type: ignore
+        items=(('MOVE', 'Move', 'Drag the overlay'),
+               ('ROTATE', 'Rotate', 'Turn the overlay around its middle'),
+               ('SCALE', 'Scale', 'Scale the overlay around its middle'),
+               ('RESET', 'Reset', 'Put the overlay back in its place, turn and size'),
+               ('OPACITY_UP', 'More Opaque', 'Raise the opacity of the overlay one step'),
+               ('OPACITY_DOWN', 'More Transparent', 'Lower the opacity of the overlay one step')),
+        default='MOVE', options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        scene = getattr(context, 'scene', None)
+        return (scene is not None and hasattr(scene, 'kanvas_references')
+                and context.area is not None and context.area.type == 'VIEW_3D'
+                and context.region is not None and context.region.type == 'WINDOW')
+
+    def invoke(self, context, event):
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        found = overlay_3d.overlay_at(context, mouse)
+        if found is None:
+            return {'PASS_THROUGH'}
+        entry, rect = found
+        if self.action == 'RESET':
+            overlay_3d.reset_overlay(entry)
+            overlay_3d.tag_3d_views()
+            return {'FINISHED'}
+        if self.action in {'OPACITY_UP', 'OPACITY_DOWN'}:
+            step = overlay_3d.OPACITY_STEP * (1 if self.action == 'OPACITY_UP' else -1)
+            value = max(0.0, min(1.0, entry.opacity + step))
+            if value == entry.opacity:
+                return {'CANCELLED'}
+            entry.opacity = value
+            return {'FINISHED'}
+        area = context.area
+        dx, dy = context.region.x - area.x, context.region.y - area.y
+        self._start = {
+            'entry': entry.name, 'mouse': mouse, 'offset': tuple(entry.offset),
+            'size': entry.size, 'rotation': entry.rotation,
+            'center': overlay_3d.rect_center(rect),
+            'aspect': (rect[2] - rect[0]) / max(1e-6, rect[3] - rect[1]),
+            # The rectangle in area pixels, where the offset works.
+            'area_rect': (rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy),
+            'ctrl': event.ctrl, 'shift': event.shift, 'button': event.type}
+        overlay_3d.edit_state['drag'] = entry.name
+        context.window.cursor_modal_set('HAND_CLOSED' if self.action == 'MOVE' else 'CROSSHAIR')
+        context.window_manager.modal_handler_add(self)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _entry(self, context):
+        return next((e for e in overlay_3d.overlays(context.scene)
+                     if e.name == self._start['entry']), None)
+
+    def _restore(self, entry):
+        start = self._start
+        entry.offset, entry.size, entry.rotation = (start['offset'], start['size'],
+                                                    start['rotation'])
+
+    def _finish(self, context, result):
+        overlay_3d.edit_state['drag'] = None
+        try:
+            context.window.cursor_modal_restore()
+        except (ReferenceError, RuntimeError):
+            pass
+        overlay_3d.tag_3d_views()
+        return {result}
+
+    def modal(self, context, event):
+        entry = self._entry(context)
+        start = self._start
+        if entry is None:
+            return self._finish(context, 'CANCELLED')
+        other_button = (event.type in {'RIGHTMOUSE', 'LEFTMOUSE'}
+                        and event.type != start['button'] and event.value == 'PRESS')
+        if event.type == 'ESC' or other_button:
+            self._restore(entry)
+            return self._finish(context, 'CANCELLED')
+        if event.type == start['button'] and event.value == 'RELEASE':
+            changed = (tuple(entry.offset), entry.size, entry.rotation) != (
+                start['offset'], start['size'], start['rotation'])
+            return self._finish(context, 'FINISHED' if changed else 'CANCELLED')
+        if event.type not in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            return {'RUNNING_MODAL'}
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        cx, cy = start['center']
+        # Precision, as in Blender's transforms: Shift slows a move or a rotation tenfold.
+        # A scale was started with Shift, so Ctrl slows it. Ctrl also snaps a rotation to
+        # 15 degrees. Neither counts when it is one of the keys that started the drag.
+        extra_ctrl = event.ctrl and not start['ctrl']
+        extra_shift = event.shift and not start['shift']
+        slow = 0.1 if (extra_ctrl if self.action == 'SCALE' else extra_shift) else 1.0
+        if self.action == 'MOVE':
+            entry.offset = (start['offset'][0] + (mouse[0] - start['mouse'][0]) * slow,
+                            start['offset'][1] + (mouse[1] - start['mouse'][1]) * slow)
+        elif self.action == 'ROTATE':
+            now = math.atan2(mouse[1] - cy, mouse[0] - cx)
+            before = math.atan2(start['mouse'][1] - cy, start['mouse'][0] - cx)
+            angle = start['rotation'] + (now - before) * slow
+            if extra_ctrl:
+                snap = math.radians(15.0)
+                angle = round(angle / snap) * snap
+            entry.rotation = angle
+        else:
+            before = max(1.0, math.hypot(start['mouse'][0] - cx, start['mouse'][1] - cy))
+            now = math.hypot(mouse[0] - cx, mouse[1] - cy)
+            ratio = (now / before) ** slow
+            new_size = max(0.02, start['size'] * ratio)
+            area = context.area
+            entry.size = new_size
+            # Grow around the middle, not around the anchor.
+            entry.offset = overlay_3d.scaled_keep_center(
+                (area.width, area.height), start['aspect'], start['size'], new_size,
+                entry.anchor, start['offset'], start['area_rect'])
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        entry = self._entry(context)
+        if entry is not None:
+            self._restore(entry)
+        overlay_3d.edit_state['drag'] = None
 
 
 class KanvasReferenceTarget(bpy.types.PropertyGroup):

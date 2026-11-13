@@ -55,7 +55,7 @@ The picture is the image as it looks on the board: brightness, contrast, saturat
 
 ## The K-Tools tab of the 3D View
 
-The **K-Tools** tab of the 3D View sidebar (`N`) lists the references of the scene in the **References** panel.
+The **K-Tools** tab of the 3D View sidebar (`N`) lists the references of the scene in the **Kanvas References** panel. The panel, and the tab with it, only exist while the scene has at least one reference or overlay.
 
 - Click a row to select its reference in the scene. The eye shows or hides a reference or an overlay.
 - **Hide Overlays**, above the list, hides every overlay at once; click again to show them.
@@ -64,7 +64,7 @@ The **K-Tools** tab of the 3D View sidebar (`N`) lists the references of the sce
 - **Remove Reference** (the trash button) deletes the reference from the scene, or the overlay from the view. The image stays on the board.
 - **Settings**, closed at first, has the options of the active row:
   - For a reference image: its size (or **Real Scale**), opacity, depth and visibility, how its picture is made (**Crop to Mask**, **Stretch and Shear**, **Color Markup**), and **Save as Image File** or **Make Live**. A live reference follows these at once; one saved as a file needs **Update Reference**.
-  - For an overlay: **Adjust in the View**, opacity, size, anchor, offset, **Flip**, **Show In**, **Fit to Camera**, **Crop to Mask**, **Stretch and Shear** and **Color Markup**.
+  - For an overlay: **Adjust in the View** (keeps the frame on), opacity, size, anchor, offset, **Rotation**, **Flip**, **Show In**, **Fit to Camera**, **Crop to Mask**, **Stretch and Shear** and **Color Markup**.
 
 A row whose image was deleted from the board is marked **Not on the board**. A reference image keeps working in the scene but can no longer be updated; an overlay stops showing until you remove it.
 
@@ -82,13 +82,25 @@ To hide the K-Tools tab, turn off **3D View References Panel** in **Preferences 
 
 ## Placing an overlay
 
-Turn on **Adjust in the View** in the overlay's **Settings**. A blue frame appears around the overlay:
+Hold `Alt` over the 3D View and a blue frame appears around the overlay under the pointer. With `Alt` held, drag anywhere on the picture:
 
-- Drag inside the frame to move the overlay.
-- Drag the square at its top right corner to scale it.
-- Right-click or press `Esc` during a drag to cancel it.
+| Shortcut | What it does |
+|---|---|
+| `Alt` + drag | Move the overlay |
+| `Alt` + right drag | Rotate it around its middle. Hold `Ctrl` to turn in steps of 15 degrees |
+| `Alt` + `Shift` + drag | Scale it around its middle, by how far the pointer is from the middle (start anywhere) |
+| `Alt` + `Ctrl` + wheel | Opacity, in steps of 5% |
+| `Alt` + `Home` | Put the overlay back: no offset, no rotation, its first size |
 
-Turn **Adjust in the View** off when you are done. While it is off, the overlay ignores the mouse, so you can click and select objects under it. You can also type the **Offset** and **Size** in the panel.
+For fine work, hold `Shift` while moving or rotating to go ten times slower, and `Ctrl` while scaling (it already has `Shift` down).
+
+Press `Esc`, or the other mouse button, during a drag to cancel it. There are no handles to reach, so the overlay can be edited from any point of the picture even when its corners are out of the view. With several overlays, the one on top (the last drawn) under the pointer is the one that moves.
+
+The pointer must be over an overlay: anywhere else the click goes to Blender as usual. `Alt` + wheel is left alone, because Blender uses it for the timeline. In Blender's paint modes and with the Grease Pencil shape tools, `Alt` + click has a meaning of its own that wins over these shortcuts. The shortcuts are in **Preferences > Add-ons > K-Tools: Kanvas > Controls** (**Overlay: Move**, **Rotate**, **Scale**, **Opacity** and **Reset**), where you can change them. The frame shows while the modifiers of **Overlay: Move** are held.
+
+To keep the frame on, turn on **Adjust in the View** in the overlay's **Settings**; turn it off when you are done. You can also type the **Offset**, **Size** and **Rotation** in the panel.
+
+Rotation is not used while the overlay is fitted to the camera frame.
 
 **Flip** mirrors the overlay from left to right, the classic way to see proportions with fresh eyes. **Show In** keeps the overlay out of the views it is not meant for; **Camera** goes well with **Fit to Camera**.
 

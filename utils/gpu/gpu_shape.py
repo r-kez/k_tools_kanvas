@@ -302,6 +302,9 @@ def _draw_selection(shader, smooth, settings, item, pixel_size):
             else:
                 _draw_handle(shader, point, pixel_size, 5.0)
         return
+    if item.shape_kind == 'PENCIL' and item.pencil_editing:
+        # Drawing on it: a box would suggest the strokes must stay inside it.
+        return
     corners = geometry.box_corners(item)
     _draw_plain_strokes(shader, smooth, _outline_strokes(corners, 'SOLID', thickness),
                         thickness, pixel_size, color)

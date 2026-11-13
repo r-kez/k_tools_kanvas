@@ -389,6 +389,7 @@ class KanvasPreferences(bpy.types.AddonPreferences):
         default=True,
     )
 
+
     show_mode_in_panel: bpy.props.BoolProperty( #type: ignore
         name="Edit/Move Switch in the Panel",
         description="Also show the Edit / Move switch at the top of the Kanvas sidebar panel "
@@ -426,6 +427,28 @@ class KanvasPreferences(bpy.types.AddonPreferences):
             ('2048', "2K (High Quality)", "Limit longest edge to 2048px"),
         ],
         default='1080'
+    )
+
+    import_size: bpy.props.EnumProperty( #type: ignore
+        name="Import Size",
+        description=("How big an image is on the board when it comes in: its longest edge, in "
+                     "canvas units, so a big picture does not dwarf the notes, checklists and "
+                     "frame headers. Only the Scale changes, never the pixels, and a smaller "
+                     "image keeps its size"),
+        items=[
+            ('0', "Original", "The image comes in at its pixel size"),
+            ('300', "300", "Longest edge of at most 300"),
+            ('500', "500", "Longest edge of at most 500"),
+            ('800', "800", "Longest edge of at most 800"),
+            ('1200', "1200", "Longest edge of at most 1200"),
+        ],
+        default='500'
+    )
+    reset_to_import_scale: bpy.props.BoolProperty( #type: ignore
+        name="Reset Scale to Import Scale",
+        description=("Reset Scale (Alt+S) puts an image back to the Scale it got when it came "
+                     "onto the board. Off, it goes to 100% of its pixel size"),
+        default=True,
     )
 
     force_8bit: bpy.props.BoolProperty( #type: ignore
@@ -521,6 +544,12 @@ class KanvasPreferences(bpy.types.AddonPreferences):
                 row.label(text="(Save .blend to resolve relative path)", icon='ERROR')
 
         box.prop(self, "auto_copy")
+
+        col.separator()
+        box = col.box()
+        box.label(text="Images on the Board", icon='IMAGE_DATA')
+        box.prop(self, "import_size")
+        box.prop(self, "reset_to_import_scale")
 
         col.separator()
 

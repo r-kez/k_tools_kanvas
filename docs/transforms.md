@@ -71,7 +71,7 @@ After pressing one, move the mouse. **Click or press `Enter`** to confirm. **Pre
 | Shortcut | Action |
 | --- | --- |
 | `Alt + G` | Reset location |
-| `Alt + S` | Reset scale and shear |
+| `Alt + S` | Reset scale and shear (scale goes back to the import scale, see **Import Size** in the preferences) |
 | `Alt + R` | Reset rotation |
 
 The right-click menu also has **Reset Transform**. Resets apply to the selected, unlocked items. A group or frame resets with its contents: `Alt + G` moves it and everything inside so its middle sits on the origin, and `Alt + R` / `Alt + S` reset each image and shape inside where it stands (text cards never rotate, so they are left alone).
@@ -143,7 +143,7 @@ Scroll while holding a modifier:
 
 | Modifier (default) | Effect |
 | --- | --- |
-| `Ctrl` + wheel | Opacity of the image under the pointer (or the active image) |
+| `Ctrl` + wheel | Opacity of the image under the pointer (or the active image); the pencil width while the pencil or its strokes are picked |
 | `Shift` + wheel | Scale of the active image |
 | `Alt` + wheel | Move the item under the pointer up or down the stack |
 

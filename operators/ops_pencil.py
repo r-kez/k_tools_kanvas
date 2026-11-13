@@ -9,7 +9,7 @@ strokes it holds. The stroke is a short modal that lives only while the button i
 import numpy as np
 import bpy
 
-from .kanvas_context import KanvasTreeOnly
+from .kanvas_context import KanvasTreeOnly, KanvasDrawingTool
 from ..utils.kanvas_data import get_settings, unique_item_name
 
 PENCIL_TOOL = 'kanvas.pencil'
@@ -77,7 +77,7 @@ def delete_picked_strokes(context, settings):
     return removed > 0
 
 
-class KANVAS_OT_PencilPick(KanvasTreeOnly, bpy.types.Operator):
+class KANVAS_OT_PencilPick(KanvasDrawingTool, bpy.types.Operator):
     """Ctrl+click with the pencil: pick the stroke under the pointer."""
     bl_idname = 'kanvas.pencil_pick'
     bl_label = 'Pick Pencil Stroke'
@@ -351,7 +351,8 @@ class KANVAS_OT_PencilCursor(bpy.types.Operator):
     def invoke(self, context, event):
         from .ops_modal import _event_in_canvas
         from ..utils import pencil
-        if _event_in_canvas(context, event):
+        if _event_in_canvas(context, event) and (
+                context.space_data.edit_tree.kanvas_settings.canvas_mode != 'MOVE'):
             pencil.set_hover(context.window, context.area, event.mouse_region_x,
                              event.mouse_region_y, event.alt)
             tool = context.workspace.tools.from_space_node()
@@ -363,7 +364,7 @@ class KANVAS_OT_PencilCursor(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
 
-class KANVAS_OT_PencilErase(KanvasTreeOnly, bpy.types.Operator):
+class KANVAS_OT_PencilErase(KanvasDrawingTool, bpy.types.Operator):
     """Drag with the eraser: it rubs out the strokes where it passes."""
     bl_idname = 'kanvas.pencil_erase'
     bl_label = 'Erase Pencil Strokes'
@@ -500,7 +501,7 @@ class KANVAS_OT_StartPencil(KanvasTreeOnly, bpy.types.Operator):
         return {'FINISHED'}
 
 
-class KANVAS_OT_PencilStroke(KanvasTreeOnly, bpy.types.Operator):
+class KANVAS_OT_PencilStroke(KanvasDrawingTool, bpy.types.Operator):
     """Draw one pencil stroke: drag, with pressure from a pen."""
     bl_idname = 'kanvas.pencil_stroke'
     bl_label = 'Pencil Stroke'

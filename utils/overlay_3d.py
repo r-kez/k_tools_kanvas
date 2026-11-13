@@ -12,6 +12,8 @@ board changes something an overlay shows, the board's own redraw tags the 3D Vie
 (`notify_board_drawn`), only when that something changed.
 """
 
+import math
+
 import bpy
 
 from . import measure as measure_math
@@ -29,7 +31,17 @@ ANCHOR_ITEMS = (
     ('BOTTOM_LEFT', 'Bottom Left', 'In the bottom left corner of the view'),
     ('BOTTOM_RIGHT', 'Bottom Right', 'In the bottom right corner of the view'),
 )
-HANDLE_SIZE = 12.0          # the corner square that scales an overlay, in pixels
+OPACITY_STEP = 0.05         # one wheel notch of the opacity shortcut
+RESET_SIZE = 0.5            # the Size an overlay gets back from Reset
+
+# Editing in the view without opening a panel, with the shortcuts of the 3D View keymap
+# (Preferences > Keymap Shortcuts): a drag over the overlay moves, rotates or scales it
+# (`kanvas.overlay_edit`). While the modifiers of the Move shortcut are held, a frame shows
+# around the overlay under the pointer. `down` is kept by the one-shot
+# `kanvas.overlay_edit_key` on every modifier press and mouse move, `mouse` is where the
+# pointer last was in the 3D View region, `drag` the name of the overlay being dragged.
+edit_state = {'down': False, 'mouse': None, 'area': None, 'drag': None}
+FRAME_COLOR = (0.3, 0.75, 1.0, 0.9)
 
 _handle = None
 _crop_cache = {}
@@ -65,15 +77,105 @@ def overlay_rect(area_width, area_height, aspect, size, anchor, offset, frame=No
     return left, bottom, left + width, bottom + height
 
 
-def hit_part(rect, point):
-    """'SCALE' on the corner handle (top right), 'MOVE' inside, None outside."""
+def rotate_point(point, center, angle):
+    """`point` turned by `angle` radians (counterclockwise) around `center`."""
+    cos, sin = math.cos(angle), math.sin(angle)
+    x, y = point[0] - center[0], point[1] - center[1]
+    return center[0] + x * cos - y * sin, center[1] + x * sin + y * cos
+
+
+def rect_center(rect):
+    return (rect[0] + rect[2]) * 0.5, (rect[1] + rect[3]) * 0.5
+
+
+def rotated_quad(rect, uv_rect, angle):
+    """(four corners, four UV) of a rectangle turned around its middle, in the order of
+    `GPUTexture.draw_quad`."""
     left, bottom, right, top = rect
-    x, y = point
-    if abs(x - right) <= HANDLE_SIZE and abs(y - top) <= HANDLE_SIZE:
-        return 'SCALE'
-    if left <= x <= right and bottom <= y <= top:
-        return 'MOVE'
-    return None
+    u0, v0, u1, v1 = uv_rect
+    center = rect_center(rect)
+    corners = [(left, bottom), (right, bottom), (right, top), (left, top)]
+    return ([rotate_point(corner, center, angle) for corner in corners],
+            [(u0, v0), (u1, v0), (u1, v1), (u0, v1)])
+
+
+def corner_points(rect):
+    left, bottom, right, top = rect
+    return [(left, bottom), (right, bottom), (right, top), (left, top)]
+
+
+def contains(rect, point, rotation=0.0):
+    """Whether `point` is inside the overlay; `rotation` turns it around its middle."""
+    if rotation:
+        point = rotate_point(point, rect_center(rect), -rotation)
+    left, bottom, right, top = rect
+    return left <= point[0] <= right and bottom <= point[1] <= top
+
+
+def scaled_keep_center(area_size, aspect, size, new_size, anchor, offset, rect):
+    """The offset that makes the overlay of `new_size` have the same middle as `rect`
+    (the one it has now), so scaling grows it around its middle, whatever the anchor."""
+    width, height = area_size
+    after = overlay_rect(width, height, aspect, new_size, anchor, offset)
+    before_center, after_center = rect_center(rect), rect_center(after)
+    return (offset[0] + before_center[0] - after_center[0],
+            offset[1] + before_center[1] - after_center[1])
+
+
+def hint_modifiers():
+    """(shift, ctrl, alt) of the Move shortcut in the 3D View keymap: holding them shows the
+    frame of the overlay under the pointer. Alt when the shortcut is missing."""
+    keyconfig = bpy.context.window_manager.keyconfigs.user
+    keymap = keyconfig.keymaps.get('3D View') if keyconfig else None
+    if keymap is not None:
+        for item in keymap.keymap_items:
+            if (item.idname == 'kanvas.overlay_edit' and item.active
+                    and item.properties.action == 'MOVE'):
+                return item.shift, item.ctrl, item.alt
+    return False, False, True
+
+
+def hint_held(event):
+    """Whether `event` holds the modifiers of the Move shortcut."""
+    if not (event.alt or event.ctrl or event.shift):
+        return False
+    shift, ctrl, alt = hint_modifiers()
+    return ((not shift or event.shift) and (not ctrl or event.ctrl)
+            and (not alt or event.alt) and (shift or ctrl or alt))
+
+
+def editable_entries(context):
+    """Overlays that can be edited in this 3D View, in drawing order: shown here and not
+    fitted to the camera frame (that one is placed by the camera, not by hand)."""
+    from .view_target import shows_here
+    scene = getattr(context, 'scene', None)
+    if scene is None or scene.kanvas_overlays_hidden:
+        return []
+    found = []
+    for entry in overlays(scene):
+        if not entry.show or not shows_here(entry, context.area):
+            continue
+        if entry.fit_camera and camera_frame(context) is not None:
+            continue
+        found.append(entry)
+    return found
+
+
+def overlay_at(context, point):
+    """(entry, rect) of the overlay under `point` (region pixels): the one drawn last, which
+    is on top. None when there is none."""
+    chosen = None
+    for entry in editable_entries(context):
+        layout = entry_layout(context, entry)
+        if layout is not None and contains(layout[1], point, entry.rotation):
+            chosen = (entry, layout[1])
+    return chosen
+
+
+def reset_overlay(entry):
+    entry.offset = (0.0, 0.0)
+    entry.rotation = 0.0
+    entry.size = RESET_SIZE
 
 
 # --- What an overlay shows ---------------------------------------------------------------
@@ -178,6 +280,7 @@ def entry_layout(context, entry):
                                             entry.offset, frame if entry.fit_camera else None)
     rect = (left - dx, bottom - dy, right - dx, top - dy)
     quad = None
+    angle = 0.0 if entry.fit_camera and frame is not None else entry.rotation
     if picture is not None:
         # The picture's corners (pixels around its middle) spread over the rectangle.
         corners, uvs, (x0, y0, x1, y1) = picture
@@ -187,6 +290,13 @@ def entry_layout(context, entry):
         if entry.flip_h:
             points = [(rect[0] + rect[2] - px, py) for px, py in points]
         quad = (points, uvs)
+    if angle:
+        # Turned around the middle of the rectangle: always drawn as a quad.
+        if quad is None:
+            quad = rotated_quad(rect, uv_rect, angle)
+        else:
+            center = rect_center(rect)
+            quad = ([rotate_point(point, center, angle) for point in quad[0]], quad[1])
     return item, rect, uv_rect, quad
 
 
@@ -240,6 +350,52 @@ def draw_overlays():
                 texture.draw_rect(rect, uv_rect, **options)
         except Exception as exc:   # one broken overlay must not stop the 3D View
             print(f'Kanvas: could not draw an overlay: {exc}')
+    try:
+        for entry in _frame_targets(context, entries):
+            draw_frame(context, entry)
+    except Exception as exc:
+        print(f'Kanvas: could not draw an overlay frame: {exc}')
+
+
+def _frame_targets(context, entries):
+    """The overlays that get a frame now: the one being dragged, the ones with Adjust on,
+    and with the shortcut modifiers held, the one under the pointer."""
+    state = edit_state
+    here = context.area is not None and state['area'] == context.area.as_pointer()
+    names = {entry.name for entry in entries if entry.adjusting}
+    if state['drag']:
+        names.add(state['drag'])
+    elif state['down'] and here and state['mouse'] is not None:
+        hovered = overlay_at(context, state['mouse'])
+        if hovered is not None:
+            names.add(hovered[0].name)
+    return [entry for entry in entries if entry.name in names]
+
+
+def draw_frame(context, entry):
+    """A thin frame around an overlay, dark under light so it reads on any picture."""
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    layout = entry_layout(context, entry)
+    if layout is None:
+        return
+    rect = layout[1]
+    center = rect_center(rect)
+    corners = [rotate_point(point, center, entry.rotation) for point in corner_points(rect)]
+    lines = []
+    for index, corner in enumerate(corners):
+        lines += [corner, corners[(index + 1) % 4]]
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    shader.bind()
+    shader.uniform_float('color', (0.0, 0.0, 0.0, 0.45))
+    gpu.state.line_width_set(4.0)
+    batch_for_shader(shader, 'LINES', {'pos': lines}).draw(shader)
+    shader.uniform_float('color', FRAME_COLOR)
+    gpu.state.line_width_set(2.0)
+    batch_for_shader(shader, 'LINES', {'pos': lines}).draw(shader)
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
 
 
 def _item_signature(item):

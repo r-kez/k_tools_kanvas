@@ -258,6 +258,13 @@ def add_image_to_kanvas(context, filepath, location=None, *, embedded=False):
 
     settings.active_image_index = len(settings.images) - 1
 
+    # A big picture comes in smaller on the board: only the scale, the pixels stay.
+    limit = int(getattr(prefs, 'import_size', '500') or 0) if prefs else 0
+    longest = max(img.size[0], img.size[1])
+    if limit > 0 and longest > limit:
+        new_item.scale_master = limit / longest
+    new_item.import_scale = new_item.scale_master
+
     # Check if added inside an existing frame (when not in batch mode)
     if not getattr(settings, 'batch_loading', False):
         from ..utils.gpu import find_frame_at_location, update_frame_bounds, sync_kanvas_frames
@@ -935,6 +942,7 @@ class KANVAS_OT_DuplicateImage(KanvasTreeOnly, bpy.types.Operator):
         new_img.image_data   = source.image_data
         new_img.location     = tuple(source.location)
         new_img.scale_master = source.scale_master
+        new_img.import_scale = source.import_scale
         new_img.scale_xy     = tuple(source.scale_xy)
         new_img.shear_xy     = tuple(source.shear_xy)
         new_img.rotation     = source.rotation

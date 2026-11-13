@@ -4,14 +4,17 @@ import bpy
 
 _items = []
 _hand_item = None
+_hover_item = None
 # Blender looks at the generic View2D keymap (plain, Ctrl and Shift + wheel) and the
 # Frames keymap (Alt + wheel) before the Node Editor keymap, so wheel shortcuts
 # registered only in the Node Editor never fire. They are added to those keymaps
 # too; the operator's poll keeps them inert outside a Kanvas Tree.
-_OWNED_KEYMAPS = {('Node Editor', 'NODE_EDITOR'), ('View2D', 'EMPTY'), ('Frames', 'EMPTY')}
+_OWNED_KEYMAPS = {('Node Editor', 'NODE_EDITOR'), ('View2D', 'EMPTY'), ('Frames', 'EMPTY'),
+                  ('3D View', 'VIEW_3D'), ('Window', 'EMPTY')}
 _MANAGED_OPERATORS = {'kanvas.interact', 'kanvas.quick_arrow',
-                      'kanvas.paste_image', 'kanvas.hand_cursor',
-                      'kanvas.isolate_markup_region'}
+                      'kanvas.paste_image', 'kanvas.hand_cursor', 'kanvas.hand_hover',
+                      'kanvas.isolate_markup_region', 'kanvas.overlay_edit_key',
+                      'kanvas.overlay_edit'}
 
 UI_ACTIONS = (
     ('Move', 'MOVE'),
@@ -40,23 +43,49 @@ UI_ACTIONS = (
 )
 
 
+# (action, key, modifiers): Alt + drag moves, Alt + right drag rotates, Alt + Shift + drag scales.
+OVERLAY_SHORTCUTS = (
+    ('MOVE', 'LEFTMOUSE', {'alt': True}),
+    ('ROTATE', 'RIGHTMOUSE', {'alt': True}),
+    ('SCALE', 'LEFTMOUSE', {'alt': True, 'shift': True}),
+    ('RESET', 'HOME', {'alt': True}),
+    ('OPACITY_UP', 'WHEELUPMOUSE', {'alt': True, 'ctrl': True}),
+    ('OPACITY_DOWN', 'WHEELDOWNMOUSE', {'alt': True, 'ctrl': True}),
+)
+OVERLAY_LABELS = {'MOVE': 'Overlay: Move (drag)', 'ROTATE': 'Overlay: Rotate (drag)',
+                  'SCALE': 'Overlay: Scale (drag)', 'RESET': 'Overlay: Reset',
+                  'OPACITY_UP': 'Overlay: Opacity up (wheel)',
+                  'OPACITY_DOWN': 'Overlay: Opacity down (wheel)'}
+
+
 def sync_hand_cursor():
     """Enable the MOUSEMOVE hand-cursor binding only while a tree is in Move mode."""
     if _hand_item is None:
         return
     try:
         from .operators.ops_modal import _shape_armed_areas
-        _hand_item.active = bool(_shape_armed_areas) or any(
-            tree.bl_idname == 'KanvasNodeTree'
-            and tree.kanvas_settings.canvas_mode == 'MOVE'
-            for tree in bpy.data.node_groups)
+        moving = any(tree.bl_idname == 'KanvasNodeTree'
+                     and tree.kanvas_settings.canvas_mode == 'MOVE'
+                     for tree in bpy.data.node_groups)
+        _hand_item.active = bool(_shape_armed_areas) or moving
+        if _hover_item is not None:
+            _hover_item.active = moving
+        if not moving:
+            from .operators.ops_cursor import release_all
+            release_all()
     except (ReferenceError, RuntimeError, AttributeError):
         pass
 
 
 def unregister():
-    global _hand_item
+    global _hand_item, _hover_item
     _hand_item = None
+    _hover_item = None
+    try:
+        from .operators.ops_cursor import release_all
+        release_all()
+    except (ImportError, RuntimeError, ReferenceError):
+        pass
     for km, item in _items:
         try:
             km.keymap_items.remove(item)
@@ -111,7 +140,13 @@ def rebuild():
     bind('SELECT_ALL', 'A', ctrl=True)
     bind('SELECT_INVERT', 'I', ctrl=True)
     bind('TOGGLE_MODE', 'TAB')
-    global _hand_item
+    global _hand_item, _hover_item
+    try:
+        window_km = keyconfig.keymaps.new(name='Window', space_type='EMPTY')
+        _hover_item = window_km.keymap_items.new('kanvas.hand_hover', 'MOUSEMOVE', 'ANY', any=True)
+        _items.append((window_km, _hover_item))
+    except (TypeError, ValueError) as exc:
+        print(f"Kanvas: hand hover binding failed: {exc}")
     try:
         _hand_item = km.keymap_items.new('kanvas.hand_cursor', 'MOUSEMOVE', 'ANY', any=True)
         _items.append((km, _hand_item))
@@ -187,6 +222,25 @@ def rebuild():
         kw = {modifier.lower(): True} if modifier else {}
         bind('WHEEL', 'WHEELUPMOUSE', keymap=keymap, **kw)
         bind('WHEEL', 'WHEELDOWNMOUSE', keymap=keymap, **kw)
+    # The overlay edit key (Alt by default) in the 3D View: a one-shot that only notes the
+    # key going down or up. Every modifier is bound; the operator reads the preference.
+    try:
+        view3d = keyconfig.keymaps.new(name='3D View', space_type='VIEW_3D',
+                                       region_type='WINDOW')
+        for key in ('LEFT_ALT', 'RIGHT_ALT', 'LEFT_CTRL', 'RIGHT_CTRL',
+                    'LEFT_SHIFT', 'RIGHT_SHIFT'):
+            item = view3d.keymap_items.new('kanvas.overlay_edit_key', key, 'ANY', any=True)
+            _items.append((view3d, item))
+        item = view3d.keymap_items.new('kanvas.overlay_edit_key', 'MOUSEMOVE', 'ANY', any=True)
+        _items.append((view3d, item))
+        # The overlay shortcuts. Alt + wheel is the timeline's, so the wheel is not used.
+        # The operator lets the event go on when the pointer is not over an overlay.
+        for action, key, modifiers in OVERLAY_SHORTCUTS:
+            item = view3d.keymap_items.new('kanvas.overlay_edit', key, 'PRESS', **modifiers)
+            item.properties.action = action
+            _items.append((view3d, item))
+    except (TypeError, ValueError) as exc:
+        print(f"Kanvas: overlay edit key binding failed: {exc}")
     bpy.context.window_manager.keyconfigs.update()
 
 
@@ -195,6 +249,7 @@ def iter_ui_bindings(window_manager):
     if not _items:
         return
     keyconfig = window_manager.keyconfigs.user
+    yield from _iter_overlay_bindings(keyconfig)
     km = keyconfig.keymaps.get('Node Editor') if keyconfig else None
     if km is None:
         return
@@ -219,6 +274,21 @@ def iter_ui_bindings(window_manager):
         elif item.idname == 'kanvas.draw_polygon':
             label = 'Pen (free path)' if item.properties.mode == 'PEN' else 'Polygon'
             yield label, keyconfig, km, item
+
+
+def _iter_overlay_bindings(keyconfig):
+    """The overlay shortcuts of the 3D View keymap, for the preferences panel."""
+    km = keyconfig.keymaps.get('3D View') if keyconfig else None
+    if km is None:
+        return
+    km = km.active()
+    found = {}
+    for item in km.keymap_items:
+        if item.idname == 'kanvas.overlay_edit':
+            found.setdefault(item.properties.action, item)
+    for action, _, _ in OVERLAY_SHORTCUTS:
+        if action in found:
+            yield OVERLAY_LABELS[action], keyconfig, km, found[action]
 
 
 def register():

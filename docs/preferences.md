@@ -15,6 +15,13 @@ Preferences are global. They apply to every board and every file.
 
 See [Images](images.md) for how these work together.
 
+### Images on the Board
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Import Size** | 500 | The longest edge of an image on the board when it comes in (Original, 300, 500, 800 or 1200), so a big picture does not dwarf notes, checklists and frame headers. Only the **Scale** changes, never the pixels, so zooming and scaling up stay sharp. A smaller image keeps its size |
+| **Reset Scale to Import Scale** | On | `Alt + S` puts an image back to the Scale it got on import. Off, it goes to 100% of its pixel size |
+
 ### Memory Optimization
 
 | Setting | Default | What it does |
@@ -38,7 +45,7 @@ See [Performance and memory](performance.md) for guidance.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Show Debug Panel** | Off | Shows the **Debug** panel in the sidebar |
-| **3D View References Panel** | On | Shows the **Kanvas** tab in the 3D View sidebar, with the [references](references-3d.md) sent from Kanvas |
+| **3D View References Panel** | On | Shows the **Kanvas References** panel in the 3D View sidebar while the scene has [references](references-3d.md) sent from Kanvas |
 | **Show Text Card Edit Button** | On | Shows the pencil button on cards and checklists |
 | **Show Edit/Move Overlay** | On | Shows the **Edit \| Move** switch at the top of the canvas |
 | **Edit/Move Switch in the Panel** | Off | Repeats the **Edit \| Move** switch at the top of the **Kanvas** sidebar panel |

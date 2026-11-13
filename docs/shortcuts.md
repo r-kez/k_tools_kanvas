@@ -13,13 +13,26 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 | `Alt` + left drag | Box select |
 | Middle drag | Pan |
 | Wheel | Zoom. Over a long text card, scrolls the card instead (see [Text cards](text-cards.md#resizing-and-long-text)) |
-| `Ctrl` + wheel | Opacity of the image under the pointer |
+| `Ctrl` + wheel | Opacity of the image under the pointer; line width with the pencil picked or strokes picked |
 | `Shift` + wheel | Scale of the active image |
 | `Alt` + wheel | Move the item under the pointer up or down the stack |
 | `Page Up` / `Page Down` | Move the selected items one step up (front) or down (back) the list |
 | `Shift + Page Up` / `Shift + Page Down` | Move the selected items to the front / back |
 | Right click | Context menu |
 | `Ctrl` + click on a link in a card | Open the link |
+
+## Overlays in the 3D View
+
+These work over a Kanvas overlay in a 3D View, not over the board. See [Placing an overlay](references-3d.md#placing-an-overlay).
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt` + drag | Move the overlay under the pointer |
+| `Alt` + right drag | Rotate it (`Ctrl` for steps of 15 degrees) |
+| `Alt` + `Shift` + drag | Scale it |
+| `Alt` + `Ctrl` + wheel | Opacity |
+| `Shift` while moving or rotating, `Ctrl` while scaling | Ten times slower, for fine work |
+| `Alt` + `Home` | Reset its place, rotation and size |
 
 ## Selection and navigation
 
@@ -40,7 +53,7 @@ All shortcuts below are defaults. They work **only while the pointer is over the
 | `S` | Scale |
 | `R` | Rotate |
 | `Alt + G` | Reset location |
-| `Alt + S` | Reset scale and shear |
+| `Alt + S` | Reset scale and shear (scale goes back to the import scale, see **Import Size** in the preferences) |
 | `Alt + R` | Reset rotation |
 | Click or `Enter` | Confirm a transform |
 | `Esc` | Cancel a transform |

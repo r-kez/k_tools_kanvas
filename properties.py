@@ -1351,6 +1351,11 @@ class KanvasImageItem(bpy.types.PropertyGroup): # type: ignore
         min=0.001,
         update=update_frame_geometry,
     )
+    import_scale: bpy.props.FloatProperty(  # type: ignore
+        name='Import Scale',
+        description=('The Scale the image got when it came onto the board (see Import Size in '
+                     'the preferences). Reset Scale goes back to it'),
+        default=1.0, min=0.001)
 
     shear_xy: bpy.props.FloatVectorProperty(  # type: ignore
         name='Shear',
